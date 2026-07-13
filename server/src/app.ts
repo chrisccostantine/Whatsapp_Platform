@@ -27,6 +27,13 @@ app.get("/api/v1/health/redis", async (_req, res) => {
   catch { res.status(503).json({ success: false, error: { code: "REDIS_UNAVAILABLE", message: "Redis is unavailable" } }); }
   finally { if (client.isOpen) await client.disconnect(); }
 });
+app.get("/api/v1/health/ready", async (_req, res) => {
+  const redis = env.REDIS_URL ? createClient({ url: env.REDIS_URL }) : null;
+  try { await prisma.$queryRaw`SELECT 1`; if (!redis) throw new Error("Redis is not configured"); await redis.connect(); await redis.ping(); res.json({ success: true, data: { status: "ready" }, message: "Service dependencies are ready" }); }
+  catch { res.status(503).json({ success: false, error: { code: "SERVICE_NOT_READY", message: "A required service dependency is unavailable" } }); }
+  finally { if (redis?.isOpen) await redis.disconnect(); }
+});
+app.use("/api/v1", rateLimit({ windowMs: 15 * 60_000, limit: 1_500, standardHeaders: "draft-7", legacyHeaders: false, skip: (req) => req.path === "/health" || req.path.startsWith("/health/") || req.path === "/whatsapp/webhook" }));
 app.use("/api/v1", apiRouter);
 app.use(notFound);
 app.use(errorHandler);

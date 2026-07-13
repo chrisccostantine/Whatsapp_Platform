@@ -14,6 +14,10 @@ import { productRouter } from "./modules/products/product.routes.js";
 import { quotationRouter } from "./modules/quotations/quotation.routes.js";
 import { invoiceRouter } from "./modules/invoices/invoice.routes.js";
 import { orderRouter } from "./modules/orders/order.routes.js";
+import { reportRouter } from "./modules/reports/report.routes.js";
+import { notificationRouter } from "./modules/notifications/notification.routes.js";
+import { subscriptionRouter } from "./modules/subscriptions/subscription.routes.js";
+import { auditRouter } from "./modules/audit/audit.routes.js";
 
 export const apiRouter = Router();
 apiRouter.use("/auth", authRouter);
@@ -31,3 +35,7 @@ apiRouter.use("/products", productRouter);
 apiRouter.use("/quotations", quotationRouter);
 apiRouter.use("/invoices", invoiceRouter);
 apiRouter.use("/orders", orderRouter);
+apiRouter.use("/reports", reportRouter);
+apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/subscription", subscriptionRouter);
+apiRouter.use("/audit-logs", auditRouter);

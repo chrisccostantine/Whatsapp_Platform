@@ -14,7 +14,15 @@ Access tokens are short-lived. Opaque refresh tokens live in HttpOnly cookies; o
 
 ## Modules
 
-Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Phase 4 adds consent-safe campaigns, unsubscribe automation, queued delivery, retries, and delivery reporting. Phase 5 adds the product/service catalog, orders, quotations, invoices, payments, atomic conversions, and PDFs. Phase 6 adds deeper reporting and subscription enforcement.
+Backend modules own their routes, validation, and services. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Phase 4 adds consent-safe campaigns, unsubscribe automation, queued delivery, retries, and delivery reporting. Phase 5 adds the product/service catalog, orders, quotations, invoices, payments, atomic conversions, and PDFs. Phase 6 adds date-scoped reports, CSV export, notifications and preferences, subscription entitlements, usage limits, audit access, and operational health sweeps.
+
+## Subscription and operations
+
+New businesses receive a 14-day full-feature trial. After the trial, Starter, Growth, and Pro capabilities and quotas are enforced by backend middleware, never by UI visibility alone. Customer creation is checked atomically against the authenticated tenant's entitlement. A billing-provider interface keeps payment-provider integration separate from authorization.
+
+Notifications include tenant and recipient keys and use deterministic deduplication for scheduled conditions. The worker marks overdue follow-ups and invoices, reports WhatsApp connection problems, and creates opted-in in-app alerts. Notification reads and preferences always include both authenticated `businessId` and `userId`.
+
+Reports are derived only from authenticated tenant data, support bounded date ranges, and escape spreadsheet values in UTF-8 CSV exports. Audit-log access is restricted to owners and admins.
 
 ## Real-time inbox
 

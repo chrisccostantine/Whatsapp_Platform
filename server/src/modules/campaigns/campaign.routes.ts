@@ -6,12 +6,13 @@ import { asyncHandler } from "../../lib/async-handler.js";
 import { ok } from "../../lib/response.js";
 import { authenticate, requireRole } from "../../middleware/auth.js";
 import { routeParam } from "../../lib/route-param.js";
+import { requireFeatureOnMutation } from "../subscriptions/plan.service.js";
 import { enqueueCampaignRecipients } from "../../queues/campaign.queue.js";
 import { audienceSchema, createCampaignSchema } from "./campaign.schemas.js";
 import { estimateAudience, launchCampaign } from "./campaign.service.js";
 
 export const campaignRouter = Router();
-campaignRouter.use(authenticate);
+campaignRouter.use(authenticate, requireFeatureOnMutation("CAMPAIGNS"));
 
 campaignRouter.get("/", asyncHandler(async (req, res) => {
   const query = z.object({ status: z.enum(["DRAFT", "SCHEDULED", "PROCESSING", "PAUSED", "COMPLETED", "CANCELLED", "FAILED"]).optional(), page: z.coerce.number().int().positive().default(1), limit: z.coerce.number().int().min(1).max(50).default(20) }).parse(req.query);

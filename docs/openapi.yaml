@@ -3,11 +3,16 @@ info: { title: Scalora CRM API, version: 0.1.0 }
 servers: [{ url: /api/v1 }]
 paths:
   /health: { get: { summary: Service health, responses: { '200': { description: Healthy } } } }
+  /health/ready: { get: { summary: PostgreSQL and Redis readiness, responses: { '200': { description: Ready }, '503': { description: Dependency unavailable } } } }
   /auth/register: { post: { summary: Register owner and workspace, responses: { '201': { description: Created } } } }
   /auth/login: { post: { summary: Sign in, responses: { '200': { description: Authenticated }, '401': { description: Invalid credentials } } } }
   /auth/refresh: { post: { summary: Rotate refresh token, responses: { '200': { description: Refreshed } } } }
   /auth/me: { get: { summary: Current user and workspace, security: [{ bearerAuth: [] }], responses: { '200': { description: Current session } } } }
   /business/onboarding: { patch: { summary: Complete owner onboarding, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated } } } }
+  /business/members: { get: { summary: List workspace team members, security: [{ bearerAuth: [] }], responses: { '200': { description: Members } } } }
+  /business/members/{id}: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], patch: { summary: Change a member role or access status, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated } } } }
+  /business/invitations: { get: { summary: List active invitations, security: [{ bearerAuth: [] }], responses: { '200': { description: Invitations } } }, post: { summary: Create a plan-limited employee invitation, security: [{ bearerAuth: [] }], responses: { '201': { description: Invitation } } } }
+  /business/invitations/accept: { post: { summary: Accept an employee invitation, responses: { '200': { description: Accepted } } } }
   /customers: { get: { summary: List tenant customers, security: [{ bearerAuth: [] }], responses: { '200': { description: Customer page } } }, post: { summary: Create customer, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
   /customers/{id}: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], get: { summary: Customer profile, security: [{ bearerAuth: [] }], responses: { '200': { description: Customer } } }, patch: { summary: Update customer, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated } } }, delete: { summary: Soft-delete customer, security: [{ bearerAuth: [] }], responses: { '200': { description: Deleted } } } }
   /follow-ups: { get: { summary: List follow-ups, security: [{ bearerAuth: [] }], responses: { '200': { description: Follow-ups } } }, post: { summary: Create follow-up, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
@@ -42,5 +47,13 @@ paths:
   /orders: { get: { summary: List tenant orders, security: [{ bearerAuth: [] }], responses: { '200': { description: Orders } } }, post: { summary: Create an order, security: [{ bearerAuth: [] }], responses: { '201': { description: Order created } } } }
   /orders/{id}/status: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], patch: { summary: Update fulfilment status and activity history, security: [{ bearerAuth: [] }], responses: { '200': { description: Status updated } } } }
   /orders/{id}/payments: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], post: { summary: Record an order payment, security: [{ bearerAuth: [] }], responses: { '201': { description: Payment recorded } } } }
+  /reports/overview: { get: { summary: Tenant-scoped business analytics with date filters, security: [{ bearerAuth: [] }], responses: { '200': { description: Report overview } } } }
+  /reports/export.csv: { get: { summary: Export an advanced report as CSV, security: [{ bearerAuth: [] }], responses: { '200': { description: CSV export }, '403': { description: Plan upgrade required } } } }
+  /notifications: { get: { summary: List current user's notifications and unread count, security: [{ bearerAuth: [] }], responses: { '200': { description: Notifications } } } }
+  /notifications/read-all: { patch: { summary: Mark all current user's notifications read, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated } } } }
+  /notifications/preferences/current: { get: { summary: Get current user's notification preferences, security: [{ bearerAuth: [] }], responses: { '200': { description: Preferences } } }, put: { summary: Replace current user's notification preferences, security: [{ bearerAuth: [] }], responses: { '200': { description: Saved } } } }
+  /subscription/current: { get: { summary: Subscription entitlement, limits, and live usage, security: [{ bearerAuth: [] }], responses: { '200': { description: Subscription and usage } } } }
+  /subscription/plans: { get: { summary: Plan capability catalog, security: [{ bearerAuth: [] }], responses: { '200': { description: Plans } } } }
+  /audit-logs: { get: { summary: Owner/admin tenant audit log, security: [{ bearerAuth: [] }], responses: { '200': { description: Audit log page }, '403': { description: Forbidden } } } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }

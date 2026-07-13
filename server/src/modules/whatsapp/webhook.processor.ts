@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
 import { normalizePhone } from "../customers/customer.service.js";
 import { isUnsubscribeMessage, setMarketingConsent } from "../consent/consent.service.js";
+import { createNotification } from "../notifications/notification.service.js";
 
 const media = z.object({ id: z.string(), mime_type: z.string().optional(), sha256: z.string().optional(), filename: z.string().optional() });
 const incomingMessage = z.object({ id: z.string(), from: z.string(), timestamp: z.string(), type: z.string(), text: z.object({ body: z.string() }).optional(), image: media.optional(), document: media.optional(), audio: media.optional(), context: z.object({ id: z.string() }).optional() });
@@ -46,6 +47,7 @@ async function processIncoming(businessId: string, accountId: string, item: z.in
     await tx.activity.create({ data: { businessId, customerId: customer.id, type: "MESSAGE_RECEIVED", metadata: { messageId: message.id, conversationId: conversation.id } } });
     return { conversation, message };
   });
+  if (result.conversation.assignedUserId) await createNotification({ businessId, userId: result.conversation.assignedUserId, type: "NEW_MESSAGE", title: "New WhatsApp message", body: body.slice(0, 160), entityType: "Conversation", entityId: result.conversation.id, dedupeKey: `new-message:${result.message.id}` });
   const campaignRecipient = await prisma.campaignRecipient.findFirst({ where: { businessId, customerId: customer.id, repliedAt: null, status: { in: ["SENT", "DELIVERED", "READ"] }, sentAt: { gte: new Date(receivedAt.getTime() - 30 * 86_400_000) } }, orderBy: { sentAt: "desc" } });
   if (campaignRecipient) await prisma.$transaction(async (tx) => { const changed = await tx.campaignRecipient.updateMany({ where: { id: campaignRecipient.id, repliedAt: null }, data: { status: "REPLIED", repliedAt: receivedAt } }); if (changed.count) await tx.campaign.update({ where: { id: campaignRecipient.campaignId }, data: { replyCount: { increment: 1 } } }); });
   emitToConversation(result.conversation.id, "message:created", result.message); emitToBusiness(businessId, "conversation:updated", result.conversation);

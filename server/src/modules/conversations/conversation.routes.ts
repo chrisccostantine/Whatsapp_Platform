@@ -11,6 +11,7 @@ import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
 import { mockWhatsAppProvider } from "../messaging/mock.provider.js";
 import { getCloudProvider } from "../whatsapp/account.service.js";
 import { assertConversationAccess, conversationSummaryInclude } from "./conversation.service.js";
+import { createNotification } from "../notifications/notification.service.js";
 
 export const conversationRouter = Router();
 conversationRouter.use(authenticate);
@@ -107,6 +108,7 @@ conversationRouter.patch("/:id/assignment", requireRole("OWNER", "ADMIN"), async
     await tx.activity.create({ data: { businessId: auth.businessId, customerId: conversation.customerId, actorId: auth.userId, type: "CONVERSATION_ASSIGNED", metadata: { conversationId: conversation.id, assignedUserId: assignedUserId ?? "unassigned" } } });
     return tx.conversation.update({ where: { id: conversation.id, businessId: auth.businessId }, data: { assignedUserId }, include: conversationSummaryInclude });
   });
+  if (assignedUserId) await createNotification({ businessId: auth.businessId, userId: assignedUserId, type: "CONVERSATION_ASSIGNED", title: "Conversation assigned", body: `A conversation was assigned to you`, entityType: "Conversation", entityId: conversation.id, dedupeKey: `conversation-assigned:${conversation.id}:${assignedUserId}:${Date.now()}` });
   emitToBusiness(auth.businessId, "conversation:updated", updated); emitToConversation(conversation.id, "conversation:assignment", updated);
   return ok(res, updated, "Assignment updated");
 }));
@@ -134,6 +136,7 @@ conversationRouter.post("/mock/incoming", requireRole("OWNER", "ADMIN"), asyncHa
     await tx.activity.create({ data: { businessId: auth.businessId, customerId, type: "MESSAGE_RECEIVED", metadata: { messageId: message.id, conversationId: conversation.id } } });
     return { conversation, message };
   });
+  if (result.conversation.assignedUserId) await createNotification({ businessId: auth.businessId, userId: result.conversation.assignedUserId, type: "NEW_MESSAGE", title: "New message", body: body.slice(0, 160), entityType: "Conversation", entityId: result.conversation.id, dedupeKey: `new-message:${result.message.id}` });
   emitToConversation(result.conversation.id, "message:created", result.message); emitToBusiness(auth.businessId, "conversation:updated", result.conversation);
   return ok(res, result, "Mock incoming message received", 201);
 }));

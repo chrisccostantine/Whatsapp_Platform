@@ -24,7 +24,7 @@ META_WEBHOOK_VERIFY_TOKEN=<random-webhook-token>
 WHATSAPP_API_VERSION=v23.0
 ```
 
-The container applies checked-in Prisma migrations before starting. The Railway health path is `/api/v1/health`. Database and Redis diagnostics are `/api/v1/health/database` and `/api/v1/health/redis`.
+The container applies checked-in Prisma migrations before starting. The Railway liveness path is `/api/v1/health`. Database and Redis diagnostics are `/api/v1/health/database` and `/api/v1/health/redis`; `/api/v1/health/ready` checks both dependencies together for production readiness monitoring.
 
 ### Web
 
@@ -38,7 +38,7 @@ Connect the same GitHub repository to a third service and set its Config File Pa
 npm run start:worker --workspace @scalora/server
 ```
 
-The API config runs checked-in migrations as a pre-deploy command. The worker must share the API's PostgreSQL and Redis services and should be deployed after the API migration succeeds. Do not expose a public domain for it. Configure Meta's webhook callback as `https://<api-domain>/api/v1/whatsapp/webhook` and subscribe to the `messages` field.
+The API config runs checked-in migrations as a pre-deploy command. The worker must share the API's PostgreSQL and Redis services and should be deployed after the API migration succeeds. It also runs the Phase 6 notification and overdue-invoice/follow-up sweep every minute. Do not expose a public domain for it. Configure Meta's webhook callback as `https://<api-domain>/api/v1/whatsapp/webhook` and subscribe to the `messages` field.
 
 After the first API deployment, run the seed command only if you want demo data:
 

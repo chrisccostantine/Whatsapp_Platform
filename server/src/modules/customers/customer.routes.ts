@@ -7,6 +7,7 @@ import { authenticate, requireRole } from "../../middleware/auth.js";
 import { assertCustomerOwnership, customerInclude, normalizeEmail, normalizePhone } from "./customer.service.js";
 import { routeParam } from "../../lib/route-param.js";
 import { setMarketingConsent } from "../consent/consent.service.js";
+import { assertWithinPlanLimit } from "../subscriptions/plan.service.js";
 
 export const customerRouter = Router();
 customerRouter.use(authenticate);
@@ -33,6 +34,7 @@ customerRouter.get("/", asyncHandler(async (req, res) => {
 }));
 
 customerRouter.post("/", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
+  await assertWithinPlanLimit(req.auth!.businessId, "CUSTOMERS");
   const input = editable.parse(req.body);
   const { tagIds, ...data } = input;
   const customer = await prisma.$transaction(async (tx) => {

@@ -16,6 +16,8 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   }});
   if (!membership) throw new AppError(403, "MEMBERSHIP_REQUIRED", "Active business membership is required");
   req.auth = { ...claims, role: membership.role };
+  const mutation = !["GET", "HEAD", "OPTIONS"].includes(req.method); const selfService = req.originalUrl.startsWith("/api/v1/notifications") || req.originalUrl === "/api/v1/auth/change-password";
+  if (mutation && !selfService) { const subscription = await prisma.subscription.findUnique({ where: { businessId: claims.businessId }, select: { status: true, trialEnd: true } }); const active = subscription?.status === "ACTIVE" || (subscription?.status === "TRIALING" && subscription.trialEnd > new Date()); if (!active) throw new AppError(402, "SUBSCRIPTION_INACTIVE", "Your workspace is read-only because its trial or subscription is not active"); }
   next();
 });
 
@@ -23,4 +25,3 @@ export const requireRole = (...roles: MembershipRole[]): RequestHandler => (req,
   if (!req.auth || !roles.includes(req.auth.role)) return next(new AppError(403, "FORBIDDEN", "You do not have permission to perform this action"));
   next();
 };
-

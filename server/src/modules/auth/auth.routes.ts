@@ -42,6 +42,7 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
   const membership = user.memberships[0];
   if (!membership || membership.business.deletedAt) throw new AppError(403, "MEMBERSHIP_REQUIRED", "No active workspace membership found");
   const tokens = await issueTokenPair({ userId: user.id, businessId: membership.businessId, membershipId: membership.id, role: membership.role }, context(req));
+  await prisma.auditLog.create({ data: { businessId: membership.businessId, actorId: user.id, action: "LOGIN", entityType: "User", entityId: user.id, ipAddress: req.ip } });
   res.cookie("refreshToken", tokens.refreshToken, cookieOptions);
   return ok(res, { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName }, business: membership.business }, "Logged in");
 }));

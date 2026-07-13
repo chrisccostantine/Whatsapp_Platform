@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import { enqueueCampaignRecipients } from "../../queues/campaign.queue.js";
 import { audienceSchema, type CampaignAudience } from "./campaign.schemas.js";
+import { createNotification } from "../notifications/notification.service.js";
 
 export function campaignAudienceWhere(businessId: string, audience: CampaignAudience): Prisma.CustomerWhereInput {
   return {
@@ -54,5 +55,8 @@ export async function launchCampaign(businessId: string, campaignId: string) {
 
 export async function finishCampaignIfSettled(campaignId: string) {
   const remaining = await prisma.campaignRecipient.count({ where: { campaignId, status: { in: ["PENDING", "QUEUED"] } } });
-  if (!remaining) await prisma.campaign.updateMany({ where: { id: campaignId, status: { in: ["PROCESSING", "SCHEDULED"] } }, data: { status: "COMPLETED", completedAt: new Date() } });
+  if (!remaining) {
+    const changed = await prisma.campaign.updateMany({ where: { id: campaignId, status: { in: ["PROCESSING", "SCHEDULED"] } }, data: { status: "COMPLETED", completedAt: new Date() } });
+    if (changed.count) { const campaign = await prisma.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { id: true, businessId: true, createdById: true, name: true } }); await createNotification({ businessId: campaign.businessId, userId: campaign.createdById, type: "CAMPAIGN_COMPLETED", title: "Campaign completed", body: campaign.name, entityType: "Campaign", entityId: campaign.id, dedupeKey: `campaign-completed:${campaign.id}` }); }
+  }
 }
