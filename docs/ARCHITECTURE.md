@@ -14,7 +14,7 @@ Access tokens are short-lived. Opaque refresh tokens live in HttpOnly cookies; o
 
 ## Modules
 
-Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Phase 4 adds consent-safe campaigns, unsubscribe automation, queued delivery, retries, and delivery reporting. Later phases add commerce/PDFs and reporting/subscriptions.
+Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Phase 4 adds consent-safe campaigns, unsubscribe automation, queued delivery, retries, and delivery reporting. Phase 5 adds the product/service catalog, orders, quotations, invoices, payments, atomic conversions, and PDFs. Phase 6 adds deeper reporting and subscription enforcement.
 
 ## Real-time inbox
 
@@ -33,6 +33,12 @@ Webhook POST requests require Meta's `X-Hub-Signature-256`. The raw body is veri
 Campaign audiences always include the authenticated `businessId`, an active marketing opt-in, no opt-out timestamp, and a normalized phone number. Launch freezes a de-duplicated recipient set, but every BullMQ delivery job checks consent and template approval again immediately before sending. Opt-outs create immutable `ConsentRecord` rows and atomically skip pending recipients. Inbound `STOP`, `UNSUBSCRIBE`, `CANCEL`, `إلغاء`, and `الغاء` messages use the same opt-out service.
 
 Campaign jobs use exponential retries and a global worker limiter. Final failures are stored per recipient. Meta delivery webhooks and subsequent inbound replies update tenant-scoped campaign counters without trusting client data.
+
+## Commerce and financial integrity
+
+Catalog items, documents, line items, and payments are tenant-scoped. Product references and assignees are verified against the authenticated workspace. Prices and taxes are snapshotted onto line items so historical documents do not change when the catalog changes. A shared decimal calculation service rejects invalid discounts and avoids binary floating-point totals.
+
+Document numbers use atomic PostgreSQL-backed per-business sequences. Quotation conversions run in one transaction and unique source-quotation constraints prevent duplicate conversion. Payment recording locks its calculation inside a transaction, rejects overpayments, and derives partial/paid balances server-side. PDFs are generated in memory and returned only after a tenant-scoped document lookup.
 
 ## Railway topology
 

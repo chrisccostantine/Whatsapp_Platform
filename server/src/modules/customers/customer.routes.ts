@@ -51,7 +51,7 @@ customerRouter.post("/", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHand
 
 customerRouter.get("/:id", asyncHandler(async (req, res) => {
   const customerId=routeParam(req.params.id);await assertCustomerOwnership(req.auth!.businessId, customerId);
-  const customer = await prisma.customer.findFirstOrThrow({ where: { id: customerId, businessId: req.auth!.businessId }, include: { ...customerInclude, notes: { where: { deletedAt: null }, include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "desc" } }, activities: { orderBy: { createdAt: "desc" }, take: 100 } } });
+  const customer = await prisma.customer.findFirstOrThrow({ where: { id: customerId, businessId: req.auth!.businessId }, include: { ...customerInclude, notes: { where: { deletedAt: null }, include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "desc" } }, activities: { orderBy: { createdAt: "desc" }, take: 100 }, quotations: { where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: 20 }, invoices: { where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: 20 }, orders: { where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: 20 } } });
   return ok(res, customer);
 }));
 

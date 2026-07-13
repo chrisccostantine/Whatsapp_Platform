@@ -8,6 +8,7 @@ export const dashboardRouter = Router();
 dashboardRouter.use(authenticate);
 dashboardRouter.get("/summary", asyncHandler(async (req, res) => {
   const businessId = req.auth!.businessId; const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0); const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { currency: true } });
   const [customers, newLeads, followUpsToday, openLeads, wonLeads, recentActivity, stages, openConversations] = await prisma.$transaction([
     prisma.customer.count({ where: { businessId, deletedAt: null } }),
     prisma.customer.count({ where: { businessId, deletedAt: null, lifecycleStage: "NEW_LEAD", createdAt: { gte: monthStart } } }),
@@ -19,5 +20,6 @@ dashboardRouter.get("/summary", asyncHandler(async (req, res) => {
     prisma.conversation.count({ where: { businessId, status: { in: ["OPEN", "PENDING"] } } })
   ]);
   const totalClosed = wonLeads + (await prisma.lead.count({ where: { businessId, deletedAt: null, stage: { isLost: true } } }));
-  return ok(res, { metrics: { customers, newLeads, followUpsToday, openLeads, openConversations, conversionRate: totalClosed ? Math.round((wonLeads / totalClosed) * 1000) / 10 : 0 }, leadsByStage: stages.map((s) => ({ name: s.name, value: s._count.leads, color: s.color })), recentActivity });
+  const [ordersThisMonth,revenue]=await prisma.$transaction([prisma.order.count({where:{businessId,deletedAt:null,createdAt:{gte:monthStart},status:{notIn:["CANCELLED","RETURNED"]}}}),prisma.payment.aggregate({where:{businessId,currency:business.currency,paidAt:{gte:monthStart}},_sum:{amount:true}})]);
+  return ok(res, { metrics: { customers, newLeads, followUpsToday, openLeads, openConversations, ordersThisMonth, revenueThisMonth: revenue._sum.amount??0, revenueCurrency: business.currency, conversionRate: totalClosed ? Math.round((wonLeads / totalClosed) * 1000) / 10 : 0 }, leadsByStage: stages.map((s) => ({ name: s.name, value: s._count.leads, color: s.color })), recentActivity });
 }));

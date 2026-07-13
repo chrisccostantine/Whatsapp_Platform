@@ -1,6 +1,6 @@
 # Scalora CRM
 
-Scalora CRM is a responsive, multi-tenant SaaS foundation for Lebanese businesses that sell and support customers through WhatsApp. This repository is being delivered in six quality-gated phases. Phases 1–4 establish the CRM, real-time inbox, official WhatsApp Cloud API integration, and consent-safe campaigns.
+Scalora CRM is a responsive, multi-tenant SaaS foundation for Lebanese businesses that sell and support customers through WhatsApp. This repository is being delivered in six quality-gated phases. Phases 1–5 establish the CRM, real-time inbox, official WhatsApp integration, consent-safe campaigns, and commerce documents.
 
 ## Repository
 
@@ -70,7 +70,7 @@ See [architecture](docs/ARCHITECTURE.md), [Railway deployment](docs/RAILWAY.md),
 - Phase 2: shared inbox, conversations, Socket.IO, mock WhatsApp provider (implemented)
 - Phase 3: official WhatsApp Cloud API, webhooks, templates, media (implemented)
 - Phase 4: consent-safe campaigns, unsubscribe handling, BullMQ delivery, and reporting (implemented)
-- Phase 5: products, orders, quotations, invoices, payments, PDFs
+- Phase 5: products, orders, quotations, invoices, payments, conversions, and PDFs (implemented)
 - Phase 6: full reports, notifications, plan enforcement, audit coverage, final deployment hardening
 
 No unofficial WhatsApp Web automation will be used. Production messaging will use Meta's official Cloud API behind a provider abstraction.

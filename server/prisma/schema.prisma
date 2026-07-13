@@ -81,6 +81,11 @@ enum ActivityType {
   CONVERSATION_ASSIGNED
   MESSAGE_SENT
   MESSAGE_RECEIVED
+  QUOTATION_CREATED
+  INVOICE_CREATED
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  PAYMENT_RECORDED
 }
 
 enum SubscriptionPlan {
@@ -185,6 +190,50 @@ enum CampaignRecipientStatus {
   SKIPPED
 }
 
+enum CatalogItemType {
+  PRODUCT
+  SERVICE
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+enum InvoicePaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  CASH
+  CARD
+  BANK_TRANSFER
+  WHISH
+  OMT
+  OTHER
+}
+
 model User {
   id                 String          @id @default(uuid()) @db.Uuid
   email              String          @unique
@@ -210,6 +259,11 @@ model User {
   internalNotes      InternalNote[]
   createdCampaigns   Campaign[]        @relation("CampaignCreator")
   recordedConsents   ConsentRecord[]   @relation("ConsentRecorder")
+  createdQuotations  Quotation[]       @relation("QuotationCreator")
+  createdInvoices    Invoice[]         @relation("InvoiceCreator")
+  assignedOrders     Order[]           @relation("OrderAssignee")
+  createdOrders      Order[]           @relation("OrderCreator")
+  recordedPayments   Payment[]         @relation("PaymentRecorder")
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   deletedAt          DateTime?
@@ -225,6 +279,10 @@ model Business {
   timezone           String           @default("Asia/Beirut")
   phone              String?
   logoUrl            String?
+  address            String?
+  email              String?
+  website            String?
+  taxNumber          String?
   employeeRange      String?
   mainObjective      String?
   onboardingComplete Boolean          @default(false)
@@ -252,6 +310,15 @@ model Business {
   campaigns          Campaign[]
   campaignRecipients CampaignRecipient[]
   consentRecords     ConsentRecord[]
+  products           Product[]
+  quotations         Quotation[]
+  quotationItems     QuotationItem[]
+  invoices           Invoice[]
+  invoiceItems       InvoiceItem[]
+  payments           Payment[]
+  orders             Order[]
+  orderItems         OrderItem[]
+  documentSequences  DocumentSequence[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -349,6 +416,9 @@ model Customer {
   conversations      Conversation[]
   consentRecords     ConsentRecord[]
   campaignRecipients CampaignRecipient[]
+  quotations         Quotation[]
+  invoices           Invoice[]
+  orders             Order[]
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   deletedAt          DateTime?
@@ -820,4 +890,227 @@ model CampaignRecipient {
   @@index([businessId, status, createdAt])
   @@index([businessId, customerId, createdAt])
   @@index([campaignId, status])
+}
+
+model DocumentSequence {
+  businessId String   @db.Uuid
+  key        String
+  value      Int      @default(0)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  updatedAt  DateTime @updatedAt
+
+  @@id([businessId, key])
+}
+
+model Product {
+  id          String          @id @default(uuid()) @db.Uuid
+  businessId  String          @db.Uuid
+  name        String
+  sku         String?
+  type        CatalogItemType
+  description String?
+  price       Decimal         @db.Decimal(14, 2)
+  currency    Currency
+  taxRate     Decimal         @default(0) @db.Decimal(5, 2)
+  isActive    Boolean         @default(true)
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  quotationItems QuotationItem[]
+  invoiceItems InvoiceItem[]
+  orderItems   OrderItem[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([businessId, sku])
+  @@index([businessId, type, isActive])
+  @@index([businessId, name])
+}
+
+model Quotation {
+  id              String          @id @default(uuid()) @db.Uuid
+  businessId      String          @db.Uuid
+  customerId      String          @db.Uuid
+  createdById     String          @db.Uuid
+  quotationNumber String
+  issueDate       DateTime
+  expiryDate      DateTime
+  currency        Currency
+  subtotal        Decimal         @db.Decimal(14, 2)
+  discount        Decimal         @default(0) @db.Decimal(14, 2)
+  tax             Decimal         @default(0) @db.Decimal(14, 2)
+  total           Decimal         @db.Decimal(14, 2)
+  notes           String?
+  terms           String?
+  status          QuotationStatus @default(DRAFT)
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy       User            @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items           QuotationItem[]
+  convertedInvoice Invoice?       @relation("QuotationInvoice")
+  convertedOrder   Order?         @relation("QuotationOrder")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([businessId, quotationNumber])
+  @@index([businessId, status, issueDate])
+  @@index([businessId, customerId, createdAt])
+}
+
+model QuotationItem {
+  id          String     @id @default(uuid()) @db.Uuid
+  businessId  String     @db.Uuid
+  quotationId String     @db.Uuid
+  productId   String?    @db.Uuid
+  name        String
+  description String?
+  quantity    Decimal    @db.Decimal(12, 3)
+  unitPrice   Decimal    @db.Decimal(14, 2)
+  discount    Decimal    @default(0) @db.Decimal(14, 2)
+  taxRate     Decimal    @default(0) @db.Decimal(5, 2)
+  lineTotal   Decimal    @db.Decimal(14, 2)
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  quotation   Quotation  @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product     Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+
+  @@index([businessId, quotationId])
+  @@index([businessId, productId])
+}
+
+model Invoice {
+  id              String               @id @default(uuid()) @db.Uuid
+  businessId      String               @db.Uuid
+  customerId      String               @db.Uuid
+  createdById     String               @db.Uuid
+  sourceQuotationId String?            @unique @db.Uuid
+  invoiceNumber   String
+  issueDate       DateTime
+  dueDate         DateTime
+  currency        Currency
+  subtotal        Decimal              @db.Decimal(14, 2)
+  discount        Decimal              @default(0) @db.Decimal(14, 2)
+  tax             Decimal              @default(0) @db.Decimal(14, 2)
+  total           Decimal              @db.Decimal(14, 2)
+  amountPaid      Decimal              @default(0) @db.Decimal(14, 2)
+  amountDue       Decimal              @db.Decimal(14, 2)
+  paymentStatus   InvoicePaymentStatus @default(UNPAID)
+  notes           String?
+  terms           String?
+  business        Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer        Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy       User                 @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sourceQuotation Quotation?           @relation("QuotationInvoice", fields: [sourceQuotationId], references: [id], onDelete: SetNull)
+  items           InvoiceItem[]
+  payments        Payment[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([businessId, invoiceNumber])
+  @@index([businessId, paymentStatus, dueDate])
+  @@index([businessId, customerId, createdAt])
+}
+
+model InvoiceItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  businessId  String    @db.Uuid
+  invoiceId   String    @db.Uuid
+  productId   String?   @db.Uuid
+  name        String
+  description String?
+  quantity    Decimal   @db.Decimal(12, 3)
+  unitPrice   Decimal   @db.Decimal(14, 2)
+  discount    Decimal   @default(0) @db.Decimal(14, 2)
+  taxRate     Decimal   @default(0) @db.Decimal(5, 2)
+  lineTotal   Decimal   @db.Decimal(14, 2)
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId, invoiceId])
+  @@index([businessId, productId])
+}
+
+model Order {
+  id                String               @id @default(uuid()) @db.Uuid
+  businessId        String               @db.Uuid
+  customerId        String               @db.Uuid
+  createdById       String               @db.Uuid
+  assignedUserId    String?              @db.Uuid
+  sourceQuotationId String?              @unique @db.Uuid
+  orderNumber       String
+  currency          Currency
+  subtotal          Decimal              @db.Decimal(14, 2)
+  discount          Decimal              @default(0) @db.Decimal(14, 2)
+  tax               Decimal              @default(0) @db.Decimal(14, 2)
+  deliveryFee       Decimal              @default(0) @db.Decimal(14, 2)
+  total             Decimal              @db.Decimal(14, 2)
+  amountPaid        Decimal              @default(0) @db.Decimal(14, 2)
+  paymentMethod     PaymentMethod
+  paymentStatus     InvoicePaymentStatus @default(UNPAID)
+  status            OrderStatus          @default(NEW)
+  deliveryAddress   String?
+  customerNotes     String?
+  internalNotes     String?
+  business          Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer          Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy         User                 @relation("OrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedUser      User?                @relation("OrderAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  sourceQuotation   Quotation?           @relation("QuotationOrder", fields: [sourceQuotationId], references: [id], onDelete: SetNull)
+  items             OrderItem[]
+  payments          Payment[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  deletedAt         DateTime?
+
+  @@unique([businessId, orderNumber])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, paymentStatus])
+  @@index([businessId, customerId, createdAt])
+  @@index([businessId, assignedUserId, status])
+}
+
+model OrderItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  businessId  String    @db.Uuid
+  orderId     String    @db.Uuid
+  productId   String?   @db.Uuid
+  name        String
+  description String?
+  quantity    Decimal   @db.Decimal(12, 3)
+  unitPrice   Decimal   @db.Decimal(14, 2)
+  discount    Decimal   @default(0) @db.Decimal(14, 2)
+  taxRate     Decimal   @default(0) @db.Decimal(5, 2)
+  lineTotal   Decimal   @db.Decimal(14, 2)
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId, orderId])
+  @@index([businessId, productId])
+}
+
+model Payment {
+  id           String        @id @default(uuid()) @db.Uuid
+  businessId   String        @db.Uuid
+  invoiceId    String?       @db.Uuid
+  orderId      String?       @db.Uuid
+  recordedById String        @db.Uuid
+  amount       Decimal       @db.Decimal(14, 2)
+  currency     Currency
+  method       PaymentMethod
+  reference    String?
+  notes        String?
+  paidAt       DateTime
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  order        Order?        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recordedBy   User          @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime      @default(now())
+
+  @@index([businessId, invoiceId, paidAt])
+  @@index([businessId, orderId, paidAt])
 }

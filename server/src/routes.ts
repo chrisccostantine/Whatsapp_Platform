@@ -10,6 +10,10 @@ import { conversationRouter } from "./modules/conversations/conversation.routes.
 import { whatsAppRouter } from "./modules/whatsapp/whatsapp.routes.js";
 import { campaignRouter } from "./modules/campaigns/campaign.routes.js";
 import { consentRouter } from "./modules/consent/consent.routes.js";
+import { productRouter } from "./modules/products/product.routes.js";
+import { quotationRouter } from "./modules/quotations/quotation.routes.js";
+import { invoiceRouter } from "./modules/invoices/invoice.routes.js";
+import { orderRouter } from "./modules/orders/order.routes.js";
 
 export const apiRouter = Router();
 apiRouter.use("/auth", authRouter);
@@ -23,3 +27,7 @@ apiRouter.use("/conversations", conversationRouter);
 apiRouter.use("/whatsapp", whatsAppRouter);
 apiRouter.use("/campaigns", campaignRouter);
 apiRouter.use("/consent", consentRouter);
+apiRouter.use("/products", productRouter);
+apiRouter.use("/quotations", quotationRouter);
+apiRouter.use("/invoices", invoiceRouter);
+apiRouter.use("/orders", orderRouter);
