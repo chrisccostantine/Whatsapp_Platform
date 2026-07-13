@@ -75,6 +75,31 @@ whatsAppRouter.delete("/account", requireRole("OWNER"), asyncHandler(async (req,
 }));
 
 whatsAppRouter.get("/templates", asyncHandler(async (req, res) => ok(res, await prisma.whatsAppTemplate.findMany({ where: { businessId: req.auth!.businessId }, orderBy: [{ status: "asc" }, { name: "asc" }] }))));
+const createTemplateSchema = z.object({
+  name: z.string().trim().min(1).max(512).regex(/^[a-z0-9_]+$/, "Use lowercase letters, numbers, and underscores only"),
+  language: z.string().regex(/^[a-z]{2,3}(?:_[A-Z]{2})?$/), category: z.enum(["MARKETING", "UTILITY"]),
+  header: z.object({ text: z.string().trim().min(1).max(60), example: z.string().trim().min(1).max(60).optional() }).optional(),
+  body: z.string().trim().min(1).max(1024), bodyExamples: z.array(z.string().trim().min(1).max(1024)).max(20).default([]),
+  footer: z.string().trim().max(60).optional(), buttons: z.array(z.object({ type: z.literal("QUICK_REPLY"), text: z.string().trim().min(1).max(25) })).max(3).default([])
+}).superRefine((input, ctx) => {
+  const bodyVariables = [...input.body.matchAll(/\{\{(\d+)\}\}/g)].map((match) => Number(match[1])); const unique = [...new Set(bodyVariables)];
+  if (unique.some((value, index) => value !== index + 1)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "Body variables must be sequential: {{1}}, {{2}}, and so on" });
+  if (/\{\{|\}\}/.test(input.body.replace(/\{\{\d+\}\}/g, ""))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "Variables must use numeric placeholders such as {{1}}" });
+  if (input.bodyExamples.length !== unique.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["bodyExamples"], message: `Provide exactly ${unique.length} body variable examples` });
+  const headerVariables = [...(input.header?.text ?? "").matchAll(/\{\{(\d+)\}\}/g)];
+  if (headerVariables.length > 1 || (headerVariables.length === 1 && headerVariables[0]?.[1] !== "1")) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["header", "text"], message: "A text header can contain only {{1}}" });
+  if (headerVariables.length && !input.header?.example) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["header", "example"], message: "Provide an example for the header variable" });
+  if (new Set(input.buttons.map((button) => button.text.toLowerCase())).size !== input.buttons.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["buttons"], message: "Quick reply button labels must be unique" });
+});
+whatsAppRouter.post("/templates", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
+  const input = createTemplateSchema.parse(req.body); const { account, provider } = await getCloudProvider(req.auth!.businessId); const submitted = await provider.createTemplate(account.whatsAppBusinessAccountId, input);
+  const variables = [...new Set([...input.body.matchAll(/\{\{(\d+)\}\}/g)].map((match) => Number(match[1])))];
+  const header = input.header ? { type: "HEADER", format: "TEXT", text: input.header.text, ...(input.header.example ? { example: { header_text: [input.header.example] } } : {}) } : null;
+  const headerJson = header ? JSON.parse(JSON.stringify(header)) as Prisma.InputJsonObject : Prisma.JsonNull; const buttonsJson = input.buttons.length ? JSON.parse(JSON.stringify(input.buttons)) as Prisma.InputJsonArray : Prisma.JsonNull;
+  const template = await prisma.whatsAppTemplate.upsert({ where: { accountId_name_language: { accountId: account.id, name: input.name, language: input.language } }, update: { metaTemplateId: submitted.id, category: submitted.category, status: templateStatus(submitted.status), header: headerJson, body: input.body, footer: input.footer || null, buttons: buttonsJson, variables }, create: { businessId: req.auth!.businessId, accountId: account.id, metaTemplateId: submitted.id, name: input.name, language: input.language, category: submitted.category, status: templateStatus(submitted.status), header: headerJson, body: input.body, footer: input.footer || null, buttons: buttonsJson, variables } });
+  await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_TEMPLATE_SUBMITTED", entityType: "WhatsAppTemplate", entityId: template.id, metadata: { name: template.name, language: template.language, category: template.category } } });
+  return ok(res, template, "Template submitted to Meta for review", 201);
+}));
 whatsAppRouter.post("/templates/sync", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
   const { account, provider } = await getCloudProvider(req.auth!.businessId); const templates = await provider.fetchTemplates(account.whatsAppBusinessAccountId);
   for (const template of templates) {

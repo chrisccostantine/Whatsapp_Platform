@@ -84,3 +84,5 @@ The inbox uses `MOCK_WHATSAPP` until Phase 3 credentials are connected. In devel
 ## Official WhatsApp Cloud API
 
 Owners connect an official number under Settings → WhatsApp. The API validates credentials directly with Meta before encrypting them with AES-256-GCM. Signed webhooks are persisted and queued before background processing. Free-form messages require an active 24-hour customer-service window; approved templates are used outside that window. The mock provider cannot send in production.
+
+Owners and admins can create Marketing or Utility text templates directly in Scalora. The editor supports an optional text header, sequential body variables with approval examples, a footer, quick-reply buttons, live preview, Meta submission, audit logging, and status synchronization. Meta remains responsible for template categorization and approval.
