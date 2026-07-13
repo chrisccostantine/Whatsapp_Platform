@@ -10,6 +10,7 @@ COPY client client
 COPY shared shared
 RUN npm run build --workspace @scalora/shared && npm run build --workspace @scalora/client
 FROM nginx:1.27-alpine
-COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+ENV PORT=80
+COPY client/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/client/dist /usr/share/nginx/html
 EXPOSE 80
