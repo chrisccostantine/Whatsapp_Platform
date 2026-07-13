@@ -7,26 +7,157 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum MembershipRole { OWNER ADMIN SALES_AGENT VIEWER }
-enum MembershipStatus { ACTIVE DISABLED }
-enum BusinessCategory { CLOTHING FURNITURE BEAUTY ELECTRONICS SERVICES OTHER }
-enum Currency { USD LBP }
-enum CustomerSource { WHATSAPP INSTAGRAM FACEBOOK WEBSITE PHONE WALK_IN REFERRAL OTHER }
-enum LifecycleStage { NEW_LEAD CONTACTED QUALIFIED PROPOSAL_SENT NEGOTIATION WON LOST EXISTING_CUSTOMER }
-enum FollowUpPriority { LOW MEDIUM HIGH URGENT }
-enum FollowUpStatus { PENDING IN_PROGRESS COMPLETED CANCELLED OVERDUE }
-enum ActivityType { CUSTOMER_CREATED NOTE_ADDED TAG_ADDED TAG_REMOVED LEAD_STAGE_CHANGED FOLLOW_UP_CREATED FOLLOW_UP_COMPLETED CONVERSATION_ASSIGNED MESSAGE_SENT MESSAGE_RECEIVED }
-enum SubscriptionPlan { STARTER GROWTH PRO }
-enum SubscriptionStatus { TRIALING ACTIVE PAST_DUE CANCELLED EXPIRED }
-enum ConversationStatus { OPEN PENDING RESOLVED ARCHIVED }
-enum ConversationChannel { WHATSAPP MOCK_WHATSAPP }
-enum MessageDirection { INBOUND OUTBOUND }
-enum MessageType { TEXT IMAGE DOCUMENT AUDIO }
-enum MessageStatus { QUEUED SENT DELIVERED READ FAILED RECEIVED }
-enum WhatsAppConnectionStatus { DISCONNECTED CONNECTING CONNECTED ERROR }
-enum WhatsAppTemplateCategory { MARKETING UTILITY AUTHENTICATION }
-enum WhatsAppTemplateStatus { DRAFT PENDING APPROVED REJECTED PAUSED DISABLED }
-enum WebhookEventStatus { PENDING PROCESSING PROCESSED FAILED }
+enum MembershipRole {
+  OWNER
+  ADMIN
+  SALES_AGENT
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum BusinessCategory {
+  CLOTHING
+  FURNITURE
+  BEAUTY
+  ELECTRONICS
+  SERVICES
+  OTHER
+}
+
+enum Currency {
+  USD
+  LBP
+}
+
+enum CustomerSource {
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  WEBSITE
+  PHONE
+  WALK_IN
+  REFERRAL
+  OTHER
+}
+
+enum LifecycleStage {
+  NEW_LEAD
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+  EXISTING_CUSTOMER
+}
+
+enum FollowUpPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum FollowUpStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  OVERDUE
+}
+
+enum ActivityType {
+  CUSTOMER_CREATED
+  NOTE_ADDED
+  TAG_ADDED
+  TAG_REMOVED
+  LEAD_STAGE_CHANGED
+  FOLLOW_UP_CREATED
+  FOLLOW_UP_COMPLETED
+  CONVERSATION_ASSIGNED
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+}
+
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  PRO
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  ARCHIVED
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  MOCK_WHATSAPP
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  AUDIO
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+enum WhatsAppConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+enum WhatsAppTemplateCategory {
+  MARKETING
+  UTILITY
+  AUTHENTICATION
+}
+
+enum WhatsAppTemplateStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  PAUSED
+  DISABLED
+}
+
+enum WebhookEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
 
 model User {
   id                 String          @id @default(uuid()) @db.Uuid
