@@ -1,0 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@tailwind base; @tailwind components; @tailwind utilities;
+@layer base { * { @apply border-slate-200; } body { @apply m-0 bg-slate-50 text-slate-900 antialiased; font-family: 'DM Sans', sans-serif; } button,input,select,textarea { font: inherit; } }
+@layer components { .card { @apply rounded-2xl border bg-white shadow-card; } .field { @apply w-full rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-50; } .btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50; } .btn-secondary { @apply inline-flex items-center justify-center rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50; } }
+

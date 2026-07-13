@@ -1,0 +1,76 @@
+# Scalora CRM
+
+Scalora CRM is a responsive, multi-tenant SaaS foundation for Lebanese businesses that sell and support customers through WhatsApp. This repository is being delivered in six quality-gated phases. Phase 1 establishes authentication, strict tenant isolation, roles, onboarding, customers, tags/notes, follow-ups, pipeline, dashboard, and demo data.
+
+## Repository
+
+```text
+client/   React + Vite + TypeScript + Tailwind
+server/   Express + TypeScript + Prisma + PostgreSQL
+shared/   Shared transport types and constants
+docs/     Architecture, OpenAPI, and Railway deployment
+```
+
+## Local setup
+
+Prerequisites: Node.js 22+, npm 10+, PostgreSQL 16+, and Redis 7+.
+
+1. Copy `server/.env.example` to `server/.env` and `client/.env.example` to `client/.env`.
+2. Start PostgreSQL and Redis (optionally with `docker compose up -d`).
+3. Install dependencies with `npm install` when you are ready.
+4. Generate Prisma Client and apply migrations:
+
+   ```sh
+   npm run db:generate
+   npm run db:migrate
+   npm run db:seed
+   ```
+
+5. Start both applications with `npm run dev`.
+
+API: `http://localhost:4000/api/v1`  
+Web: `http://localhost:5173`
+
+## Demo accounts
+
+After running the seed script:
+
+| Role | Email | Password |
+|---|---|---|
+| Owner | `owner@demo.scalora.app` | `Demo123!` |
+| Admin | `admin@demo.scalora.app` | `Demo123!` |
+| Sales agent | `agent@demo.scalora.app` | `Demo123!` |
+
+These credentials are for local/demo environments only.
+
+## Verification
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+A separate PostgreSQL database should be supplied for future integration suites. Tenant-isolation tests are mandatory at each phase gate.
+
+## Security model
+
+- Access tokens are short-lived; opaque HttpOnly refresh tokens rotate on every refresh.
+- Refresh-token hashes—not raw tokens—are stored in PostgreSQL, with reuse detection and family revocation.
+- Every protected request reloads its active business membership from the database.
+- Tenant IDs come from verified authentication context, never request payloads.
+- Customer queries include `businessId` and soft-deletion filters.
+- Zod validation, Helmet, strict CORS, rate limits, request limits, safe errors, and log redaction are enabled.
+
+See [architecture](docs/ARCHITECTURE.md), [Railway deployment](docs/RAILWAY.md), and [OpenAPI](docs/openapi.yaml).
+
+## Delivery phases
+
+- Phase 1: foundation and CRM (current)
+- Phase 2: shared inbox, conversations, Socket.IO, mock WhatsApp provider
+- Phase 3: official WhatsApp Cloud API, webhooks, templates, media
+- Phase 4: consent-safe campaigns and BullMQ processing
+- Phase 5: products, orders, quotations, invoices, payments, PDFs
+- Phase 6: full reports, notifications, plan enforcement, audit coverage, final deployment hardening
+
+No unofficial WhatsApp Web automation will be used. Production messaging will use Meta's official Cloud API behind a provider abstraction.

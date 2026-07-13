@@ -1,0 +1,21 @@
+{
+  "name": "scalora-crm",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["client", "server", "shared"],
+  "scripts": {
+    "dev": "npm run dev --workspace @scalora/server & npm run dev --workspace @scalora/client",
+    "build": "npm run build --workspace @scalora/shared && npm run build --workspace @scalora/server && npm run build --workspace @scalora/client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace @scalora/server",
+    "db:migrate": "npm run db:migrate --workspace @scalora/server",
+    "db:seed": "npm run db:seed --workspace @scalora/server"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}
+

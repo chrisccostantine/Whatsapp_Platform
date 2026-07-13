@@ -1,0 +1,17 @@
+openapi: 3.1.0
+info: { title: Scalora CRM API, version: 0.1.0 }
+servers: [{ url: /api/v1 }]
+paths:
+  /health: { get: { summary: Service health, responses: { '200': { description: Healthy } } } }
+  /auth/register: { post: { summary: Register owner and workspace, responses: { '201': { description: Created } } } }
+  /auth/login: { post: { summary: Sign in, responses: { '200': { description: Authenticated }, '401': { description: Invalid credentials } } } }
+  /auth/refresh: { post: { summary: Rotate refresh token, responses: { '200': { description: Refreshed } } } }
+  /auth/me: { get: { summary: Current user and workspace, security: [{ bearerAuth: [] }], responses: { '200': { description: Current session } } } }
+  /business/onboarding: { patch: { summary: Complete owner onboarding, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated } } } }
+  /customers: { get: { summary: List tenant customers, security: [{ bearerAuth: [] }], responses: { '200': { description: Customer page } } }, post: { summary: Create customer, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
+  /customers/{id}: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], get: { summary: Customer profile, security: [{ bearerAuth: [] }], responses: { '200': { description: Customer } } }, patch: { summary: Update customer, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated } } }, delete: { summary: Soft-delete customer, security: [{ bearerAuth: [] }], responses: { '200': { description: Deleted } } } }
+  /follow-ups: { get: { summary: List follow-ups, security: [{ bearerAuth: [] }], responses: { '200': { description: Follow-ups } } }, post: { summary: Create follow-up, security: [{ bearerAuth: [] }], responses: { '201': { description: Created } } } }
+  /pipeline: { get: { summary: Get tenant pipeline, security: [{ bearerAuth: [] }], responses: { '200': { description: Pipeline } } } }
+  /dashboard/summary: { get: { summary: Phase 1 metrics, security: [{ bearerAuth: [] }], responses: { '200': { description: Dashboard summary } } } }
+components:
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }

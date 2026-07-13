@@ -1,0 +1,364 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole { OWNER ADMIN SALES_AGENT VIEWER }
+enum MembershipStatus { ACTIVE DISABLED }
+enum BusinessCategory { CLOTHING FURNITURE BEAUTY ELECTRONICS SERVICES OTHER }
+enum Currency { USD LBP }
+enum CustomerSource { WHATSAPP INSTAGRAM FACEBOOK WEBSITE PHONE WALK_IN REFERRAL OTHER }
+enum LifecycleStage { NEW_LEAD CONTACTED QUALIFIED PROPOSAL_SENT NEGOTIATION WON LOST EXISTING_CUSTOMER }
+enum FollowUpPriority { LOW MEDIUM HIGH URGENT }
+enum FollowUpStatus { PENDING IN_PROGRESS COMPLETED CANCELLED OVERDUE }
+enum ActivityType { CUSTOMER_CREATED NOTE_ADDED TAG_ADDED TAG_REMOVED LEAD_STAGE_CHANGED FOLLOW_UP_CREATED FOLLOW_UP_COMPLETED }
+enum SubscriptionPlan { STARTER GROWTH PRO }
+enum SubscriptionStatus { TRIALING ACTIVE PAST_DUE CANCELLED EXPIRED }
+
+model User {
+  id                 String          @id @default(uuid()) @db.Uuid
+  email              String          @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  emailVerifiedAt    DateTime?
+  isActive           Boolean         @default(true)
+  memberships        BusinessMember[]
+  refreshTokens      RefreshToken[]
+  resetTokens        PasswordResetToken[]
+  createdNotes       CustomerNote[]  @relation("NoteAuthor")
+  assignedCustomers  Customer[]      @relation("CustomerAssignee")
+  assignedFollowUps  FollowUp[]      @relation("FollowUpAssignee")
+  createdFollowUps   FollowUp[]      @relation("FollowUpCreator")
+  assignedLeads      Lead[]          @relation("LeadAssignee")
+  activities         Activity[]
+  auditLogs          AuditLog[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
+}
+
+model Business {
+  id                 String           @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String           @unique
+  category           BusinessCategory?
+  country            String           @default("LB")
+  currency           Currency         @default(USD)
+  timezone           String           @default("Asia/Beirut")
+  phone              String?
+  logoUrl            String?
+  employeeRange      String?
+  mainObjective      String?
+  onboardingComplete Boolean          @default(false)
+  members            BusinessMember[]
+  invitations        Invitation[]
+  customers          Customer[]
+  tags               Tag[]
+  notes              CustomerNote[]
+  activities         Activity[]
+  followUps          FollowUp[]
+  pipelines          Pipeline[]
+  pipelineStages     PipelineStage[]
+  leads              Lead[]
+  subscription       Subscription?
+  usageRecords       UsageRecord[]
+  auditLogs          AuditLog[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+}
+
+model BusinessMember {
+  id         String           @id @default(uuid()) @db.Uuid
+  businessId String           @db.Uuid
+  userId     String           @db.Uuid
+  role       MembershipRole
+  status     MembershipStatus @default(ACTIVE)
+  business   Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([businessId, userId])
+  @@index([userId, status])
+  @@index([businessId, role])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  familyId    String    @db.Uuid
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  replacedBy  String?   @db.Uuid
+  userAgent   String?
+  ipAddress   String?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, familyId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+}
+
+model Invitation {
+  id         String         @id @default(uuid()) @db.Uuid
+  businessId String         @db.Uuid
+  email      String
+  role       MembershipRole
+  tokenHash  String         @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  business   Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+
+  @@unique([businessId, email])
+  @@index([businessId, expiresAt])
+}
+
+model Customer {
+  id                 String          @id @default(uuid()) @db.Uuid
+  businessId         String          @db.Uuid
+  firstName          String
+  lastName           String?
+  phone              String?
+  normalizedPhone    String?
+  email              String?
+  normalizedEmail    String?
+  company            String?
+  address            String?
+  city               String?
+  country            String          @default("LB")
+  source             CustomerSource  @default(OTHER)
+  lifecycleStage     LifecycleStage  @default(NEW_LEAD)
+  assignedUserId     String?         @db.Uuid
+  marketingOptIn     Boolean         @default(false)
+  optedOutAt         DateTime?
+  totalOrders        Int             @default(0)
+  totalSpent         Decimal         @default(0) @db.Decimal(14, 2)
+  lastContactAt      DateTime?
+  business           Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  assignedUser       User?           @relation("CustomerAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  tags               CustomerTag[]
+  notes              CustomerNote[]
+  activities         Activity[]
+  followUps          FollowUp[]
+  leads              Lead[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
+
+  @@unique([businessId, normalizedPhone])
+  @@unique([businessId, normalizedEmail])
+  @@index([businessId, lifecycleStage])
+  @@index([businessId, assignedUserId])
+  @@index([businessId, createdAt])
+}
+
+model Tag {
+  id          String        @id @default(uuid()) @db.Uuid
+  businessId  String        @db.Uuid
+  name        String
+  color       String
+  description String?
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customers   CustomerTag[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model CustomerTag {
+  businessId String   @db.Uuid
+  customerId String   @db.Uuid
+  tagId      String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([customerId, tagId])
+  @@index([businessId, tagId])
+}
+
+model CustomerNote {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  customerId String   @db.Uuid
+  authorId   String   @db.Uuid
+  content    String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  author     User     @relation("NoteAuthor", fields: [authorId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  @@index([businessId, customerId, createdAt])
+}
+
+model Activity {
+  id         String       @id @default(uuid()) @db.Uuid
+  businessId String       @db.Uuid
+  customerId String?      @db.Uuid
+  actorId    String?      @db.Uuid
+  type       ActivityType
+  metadata   Json?
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  actor      User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime     @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([businessId, customerId, createdAt])
+}
+
+model FollowUp {
+  id             String           @id @default(uuid()) @db.Uuid
+  businessId     String           @db.Uuid
+  customerId     String           @db.Uuid
+  assignedUserId String           @db.Uuid
+  createdById    String           @db.Uuid
+  title          String
+  description    String?
+  dueAt          DateTime
+  priority       FollowUpPriority @default(MEDIUM)
+  status         FollowUpStatus   @default(PENDING)
+  reminderAt     DateTime?
+  completedAt    DateTime?
+  business       Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer       Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedUser   User             @relation("FollowUpAssignee", fields: [assignedUserId], references: [id])
+  createdBy      User             @relation("FollowUpCreator", fields: [createdById], references: [id])
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  @@index([businessId, dueAt, status])
+  @@index([businessId, assignedUserId])
+}
+
+model Pipeline {
+  id         String          @id @default(uuid()) @db.Uuid
+  businessId String          @db.Uuid
+  name       String
+  isDefault  Boolean         @default(false)
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  stages     PipelineStage[]
+  leads      Lead[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model PipelineStage {
+  id          String    @id @default(uuid()) @db.Uuid
+  businessId  String    @db.Uuid
+  pipelineId  String    @db.Uuid
+  name        String
+  position    Int
+  probability Int       @default(0)
+  color       String
+  isWon       Boolean   @default(false)
+  isLost      Boolean   @default(false)
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  pipeline    Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  leads       Lead[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([pipelineId, position])
+  @@unique([pipelineId, name])
+  @@index([businessId])
+}
+
+model Lead {
+  id                String         @id @default(uuid()) @db.Uuid
+  businessId        String         @db.Uuid
+  pipelineId        String         @db.Uuid
+  stageId           String         @db.Uuid
+  customerId        String         @db.Uuid
+  assignedUserId    String?        @db.Uuid
+  title             String
+  estimatedValue    Decimal        @default(0) @db.Decimal(14, 2)
+  currency          Currency       @default(USD)
+  probability       Int
+  expectedCloseDate DateTime?
+  source            CustomerSource @default(OTHER)
+  notes             String?
+  lostReason        String?
+  business          Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  pipeline          Pipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage             PipelineStage  @relation(fields: [stageId], references: [id])
+  customer          Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedUser      User?          @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+
+  @@index([businessId, stageId])
+  @@index([businessId, assignedUserId])
+  @@index([businessId, customerId])
+}
+
+model Subscription {
+  id         String             @id @default(uuid()) @db.Uuid
+  businessId String             @unique @db.Uuid
+  plan       SubscriptionPlan   @default(STARTER)
+  status     SubscriptionStatus @default(TRIALING)
+  trialStart DateTime           @default(now())
+  trialEnd   DateTime
+  billingCycle String?
+  business   Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model UsageRecord {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  metric     String
+  quantity   Int
+  periodStart DateTime
+  periodEnd  DateTime
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, metric, periodStart])
+  @@index([businessId, periodEnd])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([businessId, entityType, entityId])
+}
