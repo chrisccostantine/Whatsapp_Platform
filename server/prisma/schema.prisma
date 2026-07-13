@@ -23,6 +23,10 @@ enum ConversationChannel { WHATSAPP MOCK_WHATSAPP }
 enum MessageDirection { INBOUND OUTBOUND }
 enum MessageType { TEXT IMAGE DOCUMENT AUDIO }
 enum MessageStatus { QUEUED SENT DELIVERED READ FAILED RECEIVED }
+enum WhatsAppConnectionStatus { DISCONNECTED CONNECTING CONNECTED ERROR }
+enum WhatsAppTemplateCategory { MARKETING UTILITY AUTHENTICATION }
+enum WhatsAppTemplateStatus { DRAFT PENDING APPROVED REJECTED PAUSED DISABLED }
+enum WebhookEventStatus { PENDING PROCESSING PROCESSED FAILED }
 
 model User {
   id                 String          @id @default(uuid()) @db.Uuid
@@ -83,6 +87,9 @@ model Business {
   messages           Message[]
   messageAttachments MessageAttachment[]
   internalNotes      InternalNote[]
+  whatsAppAccount    WhatsAppAccount?
+  whatsAppTemplates  WhatsAppTemplate[]
+  webhookEvents      WhatsAppWebhookEvent[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -430,6 +437,8 @@ model Message {
   conversationId    String            @db.Uuid
   senderUserId      String?           @db.Uuid
   replyToId         String?           @db.Uuid
+  whatsAppAccountId String?           @db.Uuid
+  templateId        String?           @db.Uuid
   providerMessageId String?
   idempotencyKey    String?
   direction         MessageDirection
@@ -438,6 +447,8 @@ model Message {
   body              String?
   errorCode         String?
   errorMessage      String?
+  templateName      String?
+  templateCategory  WhatsAppTemplateCategory?
   sentAt            DateTime?
   deliveredAt       DateTime?
   readAt            DateTime?
@@ -446,6 +457,8 @@ model Message {
   conversation      Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderUser        User?             @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
   replyTo           Message?          @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  whatsAppAccount   WhatsAppAccount?  @relation(fields: [whatsAppAccountId], references: [id], onDelete: SetNull)
+  template          WhatsAppTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   replies           Message[]         @relation("MessageReplies")
   attachments       MessageAttachment[]
   createdAt         DateTime          @default(now())
@@ -455,6 +468,7 @@ model Message {
   @@unique([businessId, idempotencyKey])
   @@index([businessId, conversationId, createdAt])
   @@index([businessId, status])
+  @@index([businessId, whatsAppAccountId])
 }
 
 model MessageAttachment {
@@ -465,12 +479,83 @@ model MessageAttachment {
   mimeType   String
   size       Int
   url        String
+  providerMediaId String?
+  checksum   String?
   metadata   Json?
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
 
   @@index([businessId, messageId])
+}
+
+model WhatsAppAccount {
+  id                       String                   @id @default(uuid()) @db.Uuid
+  businessId               String                   @unique @db.Uuid
+  whatsAppBusinessAccountId String
+  phoneNumberId            String                   @unique
+  displayPhoneNumber       String
+  verifiedName             String?
+  encryptedAccessToken     String
+  encryptedVerifyToken     String
+  metaAppId                String?
+  connectionStatus         WhatsAppConnectionStatus @default(CONNECTING)
+  lastSyncAt               DateTime?
+  lastError                String?
+  business                 Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  templates                WhatsAppTemplate[]
+  webhookEvents            WhatsAppWebhookEvent[]
+  messages                 Message[]
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  disconnectedAt           DateTime?
+
+  @@index([businessId, connectionStatus])
+  @@index([whatsAppBusinessAccountId])
+}
+
+model WhatsAppTemplate {
+  id            String                    @id @default(uuid()) @db.Uuid
+  businessId    String                    @db.Uuid
+  accountId     String                    @db.Uuid
+  metaTemplateId String?
+  name          String
+  language      String
+  category      WhatsAppTemplateCategory
+  status        WhatsAppTemplateStatus
+  header        Json?
+  body          String
+  footer        String?
+  buttons       Json?
+  variables     Json?
+  business      Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  account       WhatsAppAccount           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@unique([accountId, name, language])
+  @@unique([businessId, metaTemplateId])
+  @@index([businessId, status])
+}
+
+model WhatsAppWebhookEvent {
+  id          String             @id @default(uuid()) @db.Uuid
+  businessId  String             @db.Uuid
+  accountId   String             @db.Uuid
+  eventKey    String
+  payload     Json
+  status      WebhookEventStatus @default(PENDING)
+  attempts    Int                @default(0)
+  lastError   String?
+  processedAt DateTime?
+  business    Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  account     WhatsAppAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([accountId, eventKey])
+  @@index([businessId, status, createdAt])
 }
 
 model InternalNote {

@@ -1,0 +1,95 @@
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { Router } from "express";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { env } from "../../config/env.js";
+import { decryptSecret, encryptSecret, verifyMetaSignature } from "../../lib/encryption.js";
+import { AppError } from "../../lib/errors.js";
+import { asyncHandler } from "../../lib/async-handler.js";
+import { prisma } from "../../lib/prisma.js";
+import { ok } from "../../lib/response.js";
+import { authenticate, requireRole } from "../../middleware/auth.js";
+import { enqueueWhatsAppWebhook } from "../../queues/whatsapp.queue.js";
+import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
+import { assertConversationAccess } from "../conversations/conversation.service.js";
+import { getCloudProvider } from "./account.service.js";
+import { WhatsAppCloudProvider } from "./cloud.provider.js";
+
+export const whatsAppRouter = Router();
+const safeAccount = { id: true, whatsAppBusinessAccountId: true, phoneNumberId: true, displayPhoneNumber: true, verifiedName: true, metaAppId: true, connectionStatus: true, lastSyncAt: true, lastError: true, createdAt: true, updatedAt: true } as const;
+const tokenMatches = (left: string, right: string) => { const a=Buffer.from(left);const b=Buffer.from(right);return a.length===b.length&&timingSafeEqual(a,b); };
+const templateStatus=(status:string)=>status==="APPROVED"||status==="REJECTED"||status==="PAUSED"||status==="DISABLED"?status:status==="PENDING"||status==="IN_APPEAL"?"PENDING" as const:"DISABLED" as const;
+
+whatsAppRouter.get("/webhook", asyncHandler(async (req, res) => {
+  const query = z.object({ "hub.mode": z.literal("subscribe"), "hub.verify_token": z.string(), "hub.challenge": z.string() }).safeParse(req.query);
+  if (!query.success) throw new AppError(403, "WEBHOOK_VERIFICATION_FAILED", "Webhook verification failed");
+  const accounts = await prisma.whatsAppAccount.findMany({ where: { connectionStatus: "CONNECTED" }, select: { encryptedVerifyToken: true } });
+  const valid = (env.META_WEBHOOK_VERIFY_TOKEN ? tokenMatches(query.data["hub.verify_token"], env.META_WEBHOOK_VERIFY_TOKEN) : false) || accounts.some((account) => { try { return tokenMatches(query.data["hub.verify_token"], decryptSecret(account.encryptedVerifyToken)); } catch { return false; } });
+  if (!valid) throw new AppError(403, "WEBHOOK_VERIFICATION_FAILED", "Webhook verification failed");
+  res.status(200).send(query.data["hub.challenge"]);
+}));
+
+whatsAppRouter.post("/webhook", asyncHandler(async (req, res) => {
+  if (!req.rawBody || !verifyMetaSignature(req.rawBody, req.header("x-hub-signature-256"))) throw new AppError(401, "INVALID_WEBHOOK_SIGNATURE", "Webhook signature is invalid");
+  const envelope = z.object({ object: z.literal("whatsapp_business_account"), entry: z.array(z.object({ changes: z.array(z.object({ value: z.object({ metadata: z.object({ phone_number_id: z.string() }) }).passthrough() })) })).passthrough() }).passthrough().parse(req.body);
+  const phoneNumberId = envelope.entry[0]?.changes[0]?.value.metadata.phone_number_id;
+  const account = phoneNumberId ? await prisma.whatsAppAccount.findFirst({ where: { phoneNumberId, connectionStatus: "CONNECTED" } }) : null;
+  if (!account) { res.status(200).json({ success: true }); return; }
+  const eventKey = createHash("sha256").update(req.rawBody).digest("hex");
+  const event = await prisma.whatsAppWebhookEvent.upsert({ where: { accountId_eventKey: { accountId: account.id, eventKey } }, update: {}, create: { businessId: account.businessId, accountId: account.id, eventKey, payload: envelope as Prisma.InputJsonObject } });
+  res.status(200).json({ success: true });
+  void enqueueWhatsAppWebhook(event.id).catch(async (error: unknown) => { const message=error instanceof Error?error.message:"Queue unavailable";await prisma.whatsAppWebhookEvent.update({where:{id:event.id,businessId:account.businessId},data:{status:"FAILED",lastError:message.slice(0,500)}}); });
+}));
+
+whatsAppRouter.use(authenticate);
+whatsAppRouter.get("/account", asyncHandler(async (req, res) => ok(res, await prisma.whatsAppAccount.findUnique({ where: { businessId: req.auth!.businessId }, select: safeAccount }))));
+
+whatsAppRouter.post("/account/connect", requireRole("OWNER"), asyncHandler(async (req, res) => {
+  const input = z.object({ whatsAppBusinessAccountId: z.string().min(5).max(100), phoneNumberId: z.string().min(5).max(100), accessToken: z.string().min(20).max(1000), verifyToken: z.string().min(16).max(200), metaAppId: z.string().max(100).optional() }).parse(req.body);
+  const provider = new WhatsAppCloudProvider(input.phoneNumberId, input.accessToken); const profile = await provider.testConnection();
+  const optionalProfile={...(profile.verified_name?{verifiedName:profile.verified_name}:{}),...((input.metaAppId??env.META_APP_ID)?{metaAppId:input.metaAppId??env.META_APP_ID}:{})};
+  const account = await prisma.whatsAppAccount.upsert({ where: { businessId: req.auth!.businessId }, update: { whatsAppBusinessAccountId: input.whatsAppBusinessAccountId, phoneNumberId: input.phoneNumberId, displayPhoneNumber: profile.display_phone_number, encryptedAccessToken: encryptSecret(input.accessToken), encryptedVerifyToken: encryptSecret(input.verifyToken), connectionStatus: "CONNECTED", lastError: null, disconnectedAt: null,...optionalProfile }, create: { businessId: req.auth!.businessId, whatsAppBusinessAccountId: input.whatsAppBusinessAccountId, phoneNumberId: input.phoneNumberId, displayPhoneNumber: profile.display_phone_number, encryptedAccessToken: encryptSecret(input.accessToken), encryptedVerifyToken: encryptSecret(input.verifyToken), connectionStatus: "CONNECTED",...optionalProfile }, select: safeAccount });
+  await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_CONNECTED", entityType: "WhatsAppAccount", entityId: account.id } });
+  return ok(res, account, "WhatsApp account connected", 201);
+}));
+
+whatsAppRouter.post("/account/test", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
+  const { account, provider } = await getCloudProvider(req.auth!.businessId); const profile = await provider.testConnection();
+  await prisma.whatsAppAccount.update({ where: { id: account.id, businessId: req.auth!.businessId }, data: { lastError: null } });
+  return ok(res, profile, "WhatsApp connection is healthy");
+}));
+
+whatsAppRouter.delete("/account", requireRole("OWNER"), asyncHandler(async (req, res) => {
+  const account = await prisma.whatsAppAccount.findUnique({ where: { businessId: req.auth!.businessId } });
+  if (account) { await prisma.whatsAppAccount.delete({ where: { id: account.id, businessId: req.auth!.businessId } }); await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_DISCONNECTED", entityType: "WhatsAppAccount", entityId: account.id } }); }
+  return ok(res, null, "WhatsApp account disconnected");
+}));
+
+whatsAppRouter.get("/templates", asyncHandler(async (req, res) => ok(res, await prisma.whatsAppTemplate.findMany({ where: { businessId: req.auth!.businessId }, orderBy: [{ status: "asc" }, { name: "asc" }] }))));
+whatsAppRouter.post("/templates/sync", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
+  const { account, provider } = await getCloudProvider(req.auth!.businessId); const templates = await provider.fetchTemplates(account.whatsAppBusinessAccountId);
+  for (const template of templates) {
+    const header = template.components.find((component) => component.type === "HEADER"); const body = template.components.find((component) => component.type === "BODY"); const footer = template.components.find((component) => component.type === "FOOTER"); const buttons = template.components.find((component) => component.type === "BUTTONS"); const bodyText = body?.text ?? ""; const variables = [...bodyText.matchAll(/\{\{(\d+)\}\}/g)].map((match) => Number(match[1]));
+    const optionalTemplate={...(template.id?{metaTemplateId:template.id}:{}),...(footer?.text?{footer:footer.text}:{})};
+    await prisma.whatsAppTemplate.upsert({ where: { accountId_name_language: { accountId: account.id, name: template.name, language: template.language } }, update: { category: template.category, status: templateStatus(template.status), header: header ? JSON.parse(JSON.stringify(header)) as Prisma.InputJsonObject : Prisma.JsonNull, body: bodyText, buttons: buttons ? JSON.parse(JSON.stringify(buttons.buttons ?? [])) as Prisma.InputJsonArray : Prisma.JsonNull, variables,...optionalTemplate }, create: { businessId: req.auth!.businessId, accountId: account.id, name: template.name, language: template.language, category: template.category, status: templateStatus(template.status), header: header ? JSON.parse(JSON.stringify(header)) as Prisma.InputJsonObject : Prisma.JsonNull, body: bodyText, buttons: buttons ? JSON.parse(JSON.stringify(buttons.buttons ?? [])) as Prisma.InputJsonArray : Prisma.JsonNull, variables,...optionalTemplate } });
+  }
+  await prisma.whatsAppAccount.update({ where: { id: account.id, businessId: req.auth!.businessId }, data: { lastSyncAt: new Date() } });
+  return ok(res, { synced: templates.length }, "WhatsApp templates synchronized");
+}));
+
+whatsAppRouter.post("/templates/:templateId/send", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
+  const input = z.object({ conversationId: z.string().uuid(), variables: z.array(z.string().max(1024)).max(20).default([]), idempotencyKey: z.string().min(8).max(100).optional() }).parse(req.body); const auth=req.auth!;
+  const conversation = await assertConversationAccess(auth, input.conversationId); const template = await prisma.whatsAppTemplate.findFirst({ where: { id: req.params.templateId!, businessId: auth.businessId, status: "APPROVED" } });
+  if (!template) throw new AppError(404, "APPROVED_TEMPLATE_NOT_FOUND", "Approved template was not found");
+  const expected = Array.isArray(template.variables) ? template.variables.length : 0; if (input.variables.length !== expected) throw new AppError(400, "TEMPLATE_VARIABLE_MISMATCH", `This template requires ${expected} variables`);
+  const { account, provider } = await getCloudProvider(auth.businessId); if (!provider.sendTemplate) throw new AppError(500, "PROVIDER_ERROR", "Provider does not support templates");
+  const recipientPhone=conversation.customer.normalizedPhone;if(!recipientPhone)throw new AppError(400,"CUSTOMER_PHONE_REQUIRED","Customer needs a valid phone number before messaging");const idempotencyKey=input.idempotencyKey??`template:${randomUUID()}`; const existing=await prisma.message.findUnique({where:{businessId_idempotencyKey:{businessId:auth.businessId,idempotencyKey}}});if(existing)return ok(res,existing,"Template already accepted");
+  const preview=input.variables.reduce((text,value,index)=>text.replaceAll(`{{${index+1}}}`,value),template.body); const queued=await prisma.message.create({data:{businessId:auth.businessId,conversationId:conversation.id,whatsAppAccountId:account.id,templateId:template.id,templateName:template.name,templateCategory:template.category,senderUserId:auth.userId,direction:"OUTBOUND",type:"TEXT",status:"QUEUED",body:preview,idempotencyKey}});
+  try { const result=await provider.sendTemplate({recipientPhone,templateName:template.name,language:template.language,bodyVariables:input.variables});const sent=await prisma.message.update({where:{id:queued.id,businessId:auth.businessId},data:{status:"SENT",providerMessageId:result.providerMessageId,sentAt:result.acceptedAt}});await prisma.conversation.update({where:{id:conversation.id,businessId:auth.businessId},data:{lastMessageAt:result.acceptedAt,lastMessagePreview:preview.slice(0,160)}});emitToConversation(conversation.id,"message:created",sent);emitToBusiness(auth.businessId,"conversation:updated",{conversationId:conversation.id,lastMessagePreview:preview});return ok(res,sent,"Template message sent",201); }
+  catch(error){await prisma.message.update({where:{id:queued.id,businessId:auth.businessId},data:{status:"FAILED",errorCode:"META_SEND_FAILED",errorMessage:"Template message was rejected"}});throw error;}
+}));
+
+whatsAppRouter.get("/media/:attachmentId", asyncHandler(async (req, res) => {
+  const attachment=await prisma.messageAttachment.findFirst({where:{id:req.params.attachmentId,businessId:req.auth!.businessId},include:{message:{include:{conversation:true}}}});if(!attachment?.providerMediaId)throw new AppError(404,"MEDIA_NOT_FOUND","Media was not found");
+  await assertConversationAccess(req.auth!,attachment.message.conversationId);const{provider}=await getCloudProvider(req.auth!.businessId);const info=await provider.getMedia(attachment.providerMediaId);if((info.file_size??0)>20*1024*1024)throw new AppError(413,"MEDIA_TOO_LARGE","Media exceeds the 20 MB download limit");const download=await provider.downloadMedia(info.url);res.setHeader("Content-Type",download.mimeType);res.setHeader("Content-Disposition",`inline; filename="${attachment.fileName.replace(/["\r\n]/g,"")}"`);res.send(download.bytes);
+}));

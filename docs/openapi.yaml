@@ -19,5 +19,11 @@ paths:
   /conversations/{id}/internal-notes: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], post: { summary: Add an employee-only note, security: [{ bearerAuth: [] }], responses: { '201': { description: Note created } } } }
   /conversations/{id}/assignment: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], patch: { summary: Assign an active workspace member, security: [{ bearerAuth: [] }], responses: { '200': { description: Assignment updated } } } }
   /conversations/mock/incoming: { post: { summary: Simulate an inbound WhatsApp message in development, security: [{ bearerAuth: [] }], responses: { '201': { description: Message received }, '409': { description: Mock provider disabled in production } } } }
+  /whatsapp/webhook: { get: { summary: Verify Meta webhook subscription, responses: { '200': { description: Challenge accepted } } }, post: { summary: Receive a signed Meta webhook event, responses: { '200': { description: Event persisted for processing }, '401': { description: Invalid signature } } } }
+  /whatsapp/account: { get: { summary: Get connection metadata without credentials, security: [{ bearerAuth: [] }], responses: { '200': { description: Connection metadata } } }, delete: { summary: Disconnect WhatsApp, security: [{ bearerAuth: [] }], responses: { '200': { description: Disconnected } } } }
+  /whatsapp/account/connect: { post: { summary: Connect and validate WhatsApp credentials, security: [{ bearerAuth: [] }], responses: { '201': { description: Connected } } } }
+  /whatsapp/templates: { get: { summary: List synchronized templates, security: [{ bearerAuth: [] }], responses: { '200': { description: Templates } } } }
+  /whatsapp/templates/sync: { post: { summary: Synchronize templates from Meta, security: [{ bearerAuth: [] }], responses: { '200': { description: Synchronized } } } }
+  /whatsapp/templates/{templateId}/send: { parameters: [{ name: templateId, in: path, required: true, schema: { type: string, format: uuid } }], post: { summary: Send an approved template with variables, security: [{ bearerAuth: [] }], responses: { '201': { description: Template message sent } } } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }

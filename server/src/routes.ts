@@ -7,6 +7,7 @@ import { followUpRouter } from "./modules/follow-ups/follow-up.routes.js";
 import { pipelineRouter } from "./modules/pipeline/pipeline.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { conversationRouter } from "./modules/conversations/conversation.routes.js";
+import { whatsAppRouter } from "./modules/whatsapp/whatsapp.routes.js";
 
 export const apiRouter = Router();
 apiRouter.use("/auth", authRouter);
@@ -17,3 +18,4 @@ apiRouter.use("/follow-ups", followUpRouter);
 apiRouter.use("/pipeline", pipelineRouter);
 apiRouter.use("/dashboard", dashboardRouter);
 apiRouter.use("/conversations", conversationRouter);
+apiRouter.use("/whatsapp", whatsAppRouter);

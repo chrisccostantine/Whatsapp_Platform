@@ -10,8 +10,12 @@ const schema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default("15m"),
   REFRESH_TOKEN_EXPIRES_IN_DAYS: z.coerce.number().int().positive().default(30),
-  CLIENT_URL: z.string().url().default("http://localhost:5173")
+  CLIENT_URL: z.string().url().default("http://localhost:5173"),
+  ENCRYPTION_KEY: z.string().min(32),
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v23.0")
 });
 
 export const env = schema.parse(process.env);
-

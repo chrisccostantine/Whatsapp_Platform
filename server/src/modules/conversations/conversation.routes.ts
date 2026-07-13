@@ -8,6 +8,7 @@ import { ok } from "../../lib/response.js";
 import { authenticate, requireRole } from "../../middleware/auth.js";
 import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
 import { mockWhatsAppProvider } from "../messaging/mock.provider.js";
+import { getCloudProvider } from "../whatsapp/account.service.js";
 import { assertConversationAccess, conversationSummaryInclude } from "./conversation.service.js";
 
 export const conversationRouter = Router();
@@ -27,11 +28,11 @@ conversationRouter.get("/", asyncHandler(async (req, res) => {
 }));
 
 conversationRouter.post("/", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
-  requireMockProvider();
-  const { customerId } = z.object({ customerId: z.string().uuid() }).parse(req.body); const auth = authOf(req);
+  const { customerId, channel } = z.object({ customerId: z.string().uuid(), channel: z.enum(["MOCK_WHATSAPP","WHATSAPP"]).default("MOCK_WHATSAPP") }).parse(req.body); const auth = authOf(req);
+  if(channel==="MOCK_WHATSAPP")requireMockProvider();else await getCloudProvider(auth.businessId);
   const customer = await prisma.customer.findFirst({ where: { id: customerId, businessId: auth.businessId, deletedAt: null } });
   if (!customer) throw new AppError(404, "CUSTOMER_NOT_FOUND", "Customer was not found");
-  const conversation = await prisma.conversation.upsert({ where: { businessId_customerId_channel: { businessId: auth.businessId, customerId, channel: "MOCK_WHATSAPP" } }, update: {}, create: { businessId: auth.businessId, customerId, channel: "MOCK_WHATSAPP", assignedUserId: auth.role === "SALES_AGENT" ? auth.userId : customer.assignedUserId }, include: conversationSummaryInclude });
+  const conversation = await prisma.conversation.upsert({ where: { businessId_customerId_channel: { businessId: auth.businessId, customerId, channel } }, update: {}, create: { businessId: auth.businessId, customerId, channel, assignedUserId: auth.role === "SALES_AGENT" ? auth.userId : customer.assignedUserId }, include: conversationSummaryInclude });
   emitToBusiness(auth.businessId, "conversation:updated", conversation);
   return ok(res, conversation, "Conversation ready", 201);
 }));
@@ -53,9 +54,12 @@ conversationRouter.post("/:id/read", asyncHandler(async (req, res) => {
 }));
 
 conversationRouter.post("/:id/messages", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
-  requireMockProvider();
   const input = z.object({ body: z.string().trim().min(1).max(4096), type: z.enum(["TEXT"]).default("TEXT"), replyToId: z.string().uuid().optional(), idempotencyKey: z.string().min(8).max(100).optional() }).parse(req.body);
   const auth = authOf(req); const conversation = await assertConversationAccess(auth, req.params.id!);
+  const cloud = conversation.channel === "WHATSAPP" ? await getCloudProvider(auth.businessId) : undefined;
+  if(conversation.channel === "MOCK_WHATSAPP")requireMockProvider();
+  if(conversation.channel === "WHATSAPP" && !conversation.customer.normalizedPhone) throw new AppError(400,"CUSTOMER_PHONE_REQUIRED","Customer needs a valid phone number before messaging");
+  if(conversation.channel === "WHATSAPP" && (!conversation.sessionExpiresAt || conversation.sessionExpiresAt <= new Date())) throw new AppError(409,"TEMPLATE_REQUIRED","The 24-hour customer-service window is closed; send an approved template");
   const idempotencyKey = input.idempotencyKey ?? req.header("idempotency-key") ?? randomUUID();
   const existing = await prisma.message.findUnique({ where: { businessId_idempotencyKey: { businessId: auth.businessId, idempotencyKey } }, include: { attachments: true, senderUser: { select: { id: true, firstName: true, lastName: true } } } });
   if (existing) return ok(res, existing, "Message already accepted");
@@ -65,13 +69,13 @@ conversationRouter.post("/:id/messages", requireRole("OWNER", "ADMIN", "SALES_AG
   }
   const now = new Date();
   const message = await prisma.$transaction(async (tx) => {
-    const created = await tx.message.create({ data: { businessId: auth.businessId, conversationId: conversation.id, senderUserId: auth.userId, direction: "OUTBOUND", type: input.type, status: "QUEUED", body: input.body, idempotencyKey, ...(input.replyToId ? { replyToId: input.replyToId } : {}) }, include: { attachments: true, senderUser: { select: { id: true, firstName: true, lastName: true } } } });
+    const created = await tx.message.create({ data: { businessId: auth.businessId, conversationId: conversation.id, senderUserId: auth.userId, direction: "OUTBOUND", type: input.type, status: "QUEUED", body: input.body, idempotencyKey, ...(cloud ? { whatsAppAccountId: cloud.account.id } : {}), ...(input.replyToId ? { replyToId: input.replyToId } : {}) }, include: { attachments: true, senderUser: { select: { id: true, firstName: true, lastName: true } } } });
     await tx.conversation.update({ where: { id: conversation.id, businessId: auth.businessId }, data: { lastMessagePreview: input.body.slice(0, 160), lastMessageAt: now } });
     await tx.activity.create({ data: { businessId: auth.businessId, customerId: conversation.customerId, actorId: auth.userId, type: "MESSAGE_SENT", metadata: { messageId: created.id, conversationId: conversation.id } } });
     return created;
   });
   try {
-    const result = await mockWhatsAppProvider.send({ businessId: auth.businessId, conversationId: conversation.id, messageId: message.id, recipientPhone: conversation.customer.normalizedPhone ?? "mock", type: input.type, body: input.body });
+    const provider=cloud?.provider??mockWhatsAppProvider;const result = await provider.send({ businessId: auth.businessId, conversationId: conversation.id, messageId: message.id, recipientPhone: conversation.customer.normalizedPhone ?? "mock", type: input.type, body: input.body });
     const sent = await prisma.message.update({ where: { id: message.id, businessId: auth.businessId }, data: { status: "SENT", providerMessageId: result.providerMessageId, sentAt: result.acceptedAt }, include: { attachments: true, senderUser: { select: { id: true, firstName: true, lastName: true } } } });
     emitToConversation(conversation.id, "message:created", sent); emitToBusiness(auth.businessId, "conversation:updated", { conversationId: conversation.id, lastMessagePreview: input.body, lastMessageAt: now });
     return ok(res, sent, "Message sent", 201);

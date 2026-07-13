@@ -14,13 +14,19 @@ Access tokens are short-lived. Opaque refresh tokens live in HttpOnly cookies; o
 
 ## Modules
 
-Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations, public messages, internal notes, assignment history, messaging providers, and real-time delivery. Later phases add WhatsApp Cloud API, campaigns/queues, commerce/PDFs, and reporting/subscriptions.
+Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Later phases add campaigns, commerce/PDFs, and reporting/subscriptions.
 
 ## Real-time inbox
 
 Socket.IO authenticates with the same short-lived access token and reloads the active membership before joining `business:{businessId}`. Conversation rooms are joined only after a tenant-scoped database lookup; sales agents must also be assigned. REST remains the source of truth and Socket.IO events invalidate client caches.
 
 Public messages and internal notes use separate tables and endpoints. This prevents an employee-only note from ever entering a provider send path. Outgoing messages use tenant-scoped idempotency keys. The mock provider implements the same interface that the official Cloud API provider will implement in Phase 3.
+
+## WhatsApp Cloud processing
+
+Credential fields use AES-256-GCM authenticated encryption. Decryption occurs only inside the provider factory and plaintext credentials are never returned, logged, or emitted. Graph requests are restricted to the configured version of `graph.facebook.com`.
+
+Webhook POST requests require Meta's `X-Hub-Signature-256`. The raw body is verified before parsing. A SHA-256 event key and database unique constraint prevent duplicate processing. The API returns HTTP 200 after persistence, while BullMQ workers process messages and statuses with exponential retries. Incoming messages reopen the 24-hour session window and automatically match or create E.164 customers.
 
 ## Railway topology
 
