@@ -14,7 +14,7 @@ Access tokens are short-lived. Opaque refresh tokens live in HttpOnly cookies; o
 
 ## Modules
 
-Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Later phases add campaigns, commerce/PDFs, and reporting/subscriptions.
+Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations and real-time delivery. Phase 3 adds encrypted WhatsApp accounts, the official Cloud provider, signed webhooks, durable processing, templates, session rules, and media proxying. Phase 4 adds consent-safe campaigns, unsubscribe automation, queued delivery, retries, and delivery reporting. Later phases add commerce/PDFs and reporting/subscriptions.
 
 ## Real-time inbox
 
@@ -27,6 +27,12 @@ Public messages and internal notes use separate tables and endpoints. This preve
 Credential fields use AES-256-GCM authenticated encryption. Decryption occurs only inside the provider factory and plaintext credentials are never returned, logged, or emitted. Graph requests are restricted to the configured version of `graph.facebook.com`.
 
 Webhook POST requests require Meta's `X-Hub-Signature-256`. The raw body is verified before parsing. A SHA-256 event key and database unique constraint prevent duplicate processing. The API returns HTTP 200 after persistence, while BullMQ workers process messages and statuses with exponential retries. Incoming messages reopen the 24-hour session window and automatically match or create E.164 customers.
+
+## Campaign and consent safety
+
+Campaign audiences always include the authenticated `businessId`, an active marketing opt-in, no opt-out timestamp, and a normalized phone number. Launch freezes a de-duplicated recipient set, but every BullMQ delivery job checks consent and template approval again immediately before sending. Opt-outs create immutable `ConsentRecord` rows and atomically skip pending recipients. Inbound `STOP`, `UNSUBSCRIBE`, `CANCEL`, `إلغاء`, and `الغاء` messages use the same opt-out service.
+
+Campaign jobs use exponential retries and a global worker limiter. Final failures are stored per recipient. Meta delivery webhooks and subsequent inbound replies update tenant-scoped campaign counters without trusting client data.
 
 ## Railway topology
 

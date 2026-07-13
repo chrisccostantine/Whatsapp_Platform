@@ -70,7 +70,7 @@ whatsAppRouter.post("/account/test", requireRole("OWNER", "ADMIN"), asyncHandler
 
 whatsAppRouter.delete("/account", requireRole("OWNER"), asyncHandler(async (req, res) => {
   const account = await prisma.whatsAppAccount.findUnique({ where: { businessId: req.auth!.businessId } });
-  if (account) { await prisma.whatsAppAccount.delete({ where: { id: account.id, businessId: req.auth!.businessId } }); await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_DISCONNECTED", entityType: "WhatsAppAccount", entityId: account.id } }); }
+  if (account) { await prisma.whatsAppAccount.update({ where: { id: account.id, businessId: req.auth!.businessId }, data: { connectionStatus: "DISCONNECTED", encryptedAccessToken: encryptSecret(randomUUID()), encryptedVerifyToken: encryptSecret(randomUUID()), disconnectedAt: new Date(), lastError: null } }); await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_DISCONNECTED", entityType: "WhatsAppAccount", entityId: account.id } }); }
   return ok(res, null, "WhatsApp account disconnected");
 }));
 

@@ -25,5 +25,11 @@ paths:
   /whatsapp/templates: { get: { summary: List synchronized templates, security: [{ bearerAuth: [] }], responses: { '200': { description: Templates } } } }
   /whatsapp/templates/sync: { post: { summary: Synchronize templates from Meta, security: [{ bearerAuth: [] }], responses: { '200': { description: Synchronized } } } }
   /whatsapp/templates/{templateId}/send: { parameters: [{ name: templateId, in: path, required: true, schema: { type: string, format: uuid } }], post: { summary: Send an approved template with variables, security: [{ bearerAuth: [] }], responses: { '201': { description: Template message sent } } } }
+  /campaigns: { get: { summary: List tenant campaigns and delivery counters, security: [{ bearerAuth: [] }], responses: { '200': { description: Campaign page } } }, post: { summary: Create a draft with an approved marketing template, security: [{ bearerAuth: [] }], responses: { '201': { description: Draft created } } } }
+  /campaigns/estimate: { post: { summary: Estimate opted-in recipients after audience filters, security: [{ bearerAuth: [] }], responses: { '200': { description: Eligible count and sample } } } }
+  /campaigns/{id}/launch: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], post: { summary: Freeze eligible recipients and queue delivery, security: [{ bearerAuth: [] }], responses: { '200': { description: Campaign queued } } } }
+  /campaigns/{id}/report: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], get: { summary: Campaign delivery, read, reply, failure, and skip rates, security: [{ bearerAuth: [] }], responses: { '200': { description: Campaign report } } } }
+  /consent/customers: { get: { summary: List customers by current marketing consent, security: [{ bearerAuth: [] }], responses: { '200': { description: Consent list } } } }
+  /consent/customers/{id}: { parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], patch: { summary: Record an opt-in or opt-out, security: [{ bearerAuth: [] }], responses: { '200': { description: Consent updated } } } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }

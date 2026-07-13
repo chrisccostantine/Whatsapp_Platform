@@ -159,6 +159,32 @@ enum WebhookEventStatus {
   FAILED
 }
 
+enum MarketingConsentStatus {
+  OPTED_IN
+  OPTED_OUT
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  PROCESSING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  REPLIED
+  FAILED
+  SKIPPED
+}
+
 model User {
   id                 String          @id @default(uuid()) @db.Uuid
   email              String          @unique
@@ -182,6 +208,8 @@ model User {
   madeAssignments    ConversationAssignment[] @relation("AssignmentActor")
   sentMessages       Message[]         @relation("MessageSender")
   internalNotes      InternalNote[]
+  createdCampaigns   Campaign[]        @relation("CampaignCreator")
+  recordedConsents   ConsentRecord[]   @relation("ConsentRecorder")
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   deletedAt          DateTime?
@@ -221,6 +249,9 @@ model Business {
   whatsAppAccount    WhatsAppAccount?
   whatsAppTemplates  WhatsAppTemplate[]
   webhookEvents      WhatsAppWebhookEvent[]
+  campaigns          Campaign[]
+  campaignRecipients CampaignRecipient[]
+  consentRecords     ConsentRecord[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -301,7 +332,10 @@ model Customer {
   lifecycleStage     LifecycleStage  @default(NEW_LEAD)
   assignedUserId     String?         @db.Uuid
   marketingOptIn     Boolean         @default(false)
+  marketingOptInSource String?
+  marketingOptInAt   DateTime?
   optedOutAt         DateTime?
+  consentNotes       String?
   totalOrders        Int             @default(0)
   totalSpent         Decimal         @default(0) @db.Decimal(14, 2)
   lastContactAt      DateTime?
@@ -313,6 +347,8 @@ model Customer {
   followUps          FollowUp[]
   leads              Lead[]
   conversations      Conversation[]
+  consentRecords     ConsentRecord[]
+  campaignRecipients CampaignRecipient[]
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   deletedAt          DateTime?
@@ -592,6 +628,7 @@ model Message {
   template          WhatsAppTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   replies           Message[]         @relation("MessageReplies")
   attachments       MessageAttachment[]
+  campaignRecipient CampaignRecipient?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -662,6 +699,7 @@ model WhatsAppTemplate {
   business      Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   account       WhatsAppAccount           @relation(fields: [accountId], references: [id], onDelete: Cascade)
   messages      Message[]
+  campaigns     Campaign[]
   createdAt     DateTime                  @default(now())
   updatedAt     DateTime                  @updatedAt
 
@@ -703,4 +741,83 @@ model InternalNote {
   deletedAt      DateTime?
 
   @@index([businessId, conversationId, createdAt])
+}
+
+model ConsentRecord {
+  id           String                 @id @default(uuid()) @db.Uuid
+  businessId   String                 @db.Uuid
+  customerId   String                 @db.Uuid
+  recordedById String?                @db.Uuid
+  status       MarketingConsentStatus
+  source       String
+  notes        String?
+  business     Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer     Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  recordedBy   User?                  @relation("ConsentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime               @default(now())
+
+  @@index([businessId, customerId, createdAt])
+  @@index([businessId, status, createdAt])
+}
+
+model Campaign {
+  id              String              @id @default(uuid()) @db.Uuid
+  businessId      String              @db.Uuid
+  templateId      String              @db.Uuid
+  createdById     String              @db.Uuid
+  name            String
+  audience        Json
+  scheduledAt     DateTime?
+  status          CampaignStatus      @default(DRAFT)
+  totalRecipients Int                 @default(0)
+  queuedCount     Int                 @default(0)
+  sentCount       Int                 @default(0)
+  deliveredCount  Int                 @default(0)
+  readCount       Int                 @default(0)
+  failedCount     Int                 @default(0)
+  replyCount      Int                 @default(0)
+  skippedCount    Int                 @default(0)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  lastError       String?
+  business        Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  template        WhatsAppTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  createdBy       User                @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  recipients      CampaignRecipient[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([businessId, status, createdAt])
+  @@index([businessId, scheduledAt])
+}
+
+model CampaignRecipient {
+  id                String                  @id @default(uuid()) @db.Uuid
+  businessId        String                  @db.Uuid
+  campaignId        String                  @db.Uuid
+  customerId        String                  @db.Uuid
+  messageId         String?                 @unique @db.Uuid
+  phone             String
+  variables         Json?
+  status            CampaignRecipientStatus @default(PENDING)
+  queuedAt          DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  repliedAt         DateTime?
+  failedAt          DateTime?
+  skippedAt         DateTime?
+  errorCode         String?
+  errorMessage      String?
+  business          Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign          Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer          Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  message           Message?                @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([campaignId, customerId])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, customerId, createdAt])
+  @@index([campaignId, status])
 }

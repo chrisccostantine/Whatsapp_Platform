@@ -6,6 +6,7 @@ import { ok } from "../../lib/response.js";
 import { authenticate, requireRole } from "../../middleware/auth.js";
 import { assertCustomerOwnership, customerInclude, normalizeEmail, normalizePhone } from "./customer.service.js";
 import { routeParam } from "../../lib/route-param.js";
+import { setMarketingConsent } from "../consent/consent.service.js";
 
 export const customerRouter = Router();
 customerRouter.use(authenticate);
@@ -40,7 +41,8 @@ customerRouter.post("/", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHand
       const count = await tx.tag.count({ where: { businessId: req.auth!.businessId, id: { in: tagIds } } });
       if (count !== tagIds.length) throw new Error("Invalid tags");
     }
-    const created = await tx.customer.create({ data: { ...data, businessId: req.auth!.businessId, normalizedPhone: normalizePhone(data.phone), normalizedEmail: normalizeEmail(data.email), tags: { create: tagIds.map((tagId) => ({ businessId: req.auth!.businessId, tagId })) } }, include: customerInclude });
+    const created = await tx.customer.create({ data: { ...data, ...(data.marketingOptIn ? { marketingOptInSource: "CRM_CREATE", marketingOptInAt: new Date() } : {}), businessId: req.auth!.businessId, normalizedPhone: normalizePhone(data.phone), normalizedEmail: normalizeEmail(data.email), tags: { create: tagIds.map((tagId) => ({ businessId: req.auth!.businessId, tagId })) } }, include: customerInclude });
+    if (data.marketingOptIn) await tx.consentRecord.create({ data: { businessId: req.auth!.businessId, customerId: created.id, recordedById: req.auth!.userId, status: "OPTED_IN", source: "CRM_CREATE" } });
     await tx.activity.create({ data: { businessId: req.auth!.businessId, customerId: created.id, actorId: req.auth!.userId, type: "CUSTOMER_CREATED" } });
     return created;
   });
@@ -55,8 +57,10 @@ customerRouter.get("/:id", asyncHandler(async (req, res) => {
 
 customerRouter.patch("/:id", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
   const existing = await assertCustomerOwnership(req.auth!.businessId, routeParam(req.params.id));
-  const input = editable.partial().omit({ tagIds: true }).parse(req.body);
-  const customer = await prisma.customer.update({ where: { id: existing.id }, data: { ...input, ...(input.phone !== undefined ? { normalizedPhone: normalizePhone(input.phone) } : {}), ...(input.email !== undefined ? { normalizedEmail: normalizeEmail(input.email) } : {}) }, include: customerInclude });
+  const input = editable.partial().omit({ tagIds: true }).parse(req.body); const { marketingOptIn, ...changes } = input;
+  await prisma.customer.update({ where: { id: existing.id }, data: { ...changes, ...(input.phone !== undefined ? { normalizedPhone: normalizePhone(input.phone) } : {}), ...(input.email !== undefined ? { normalizedEmail: normalizeEmail(input.email) } : {}) } });
+  if (marketingOptIn !== undefined && marketingOptIn !== existing.marketingOptIn) await setMarketingConsent({ businessId: req.auth!.businessId, customerId: existing.id, recordedById: req.auth!.userId, optedIn: marketingOptIn, source: "CRM_UPDATE" });
+  const customer = await prisma.customer.findUniqueOrThrow({ where: { id: existing.id }, include: customerInclude });
   return ok(res, customer, "Customer updated");
 }));
 

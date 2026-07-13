@@ -1,8 +1,11 @@
 import { startWhatsAppWorker } from "./queues/whatsapp.queue.js";
+import { startCampaignWorker } from "./queues/campaign.queue.js";
+import { markCampaignRecipientFailed } from "./modules/campaigns/campaign.processor.js";
 import { prisma } from "./lib/prisma.js";
-const worker = startWhatsAppWorker();
-worker.on("completed", (job) => console.log(`WhatsApp webhook job ${job.id} completed`));
-worker.on("failed", (job, error) => console.error(`WhatsApp webhook job ${job?.id ?? "unknown"} failed: ${error.message}`));
-const shutdown = async () => { await worker.close(); await prisma.$disconnect(); process.exit(0); };
+const webhookWorker = startWhatsAppWorker();
+const campaignWorker = startCampaignWorker();
+webhookWorker.on("completed", (job) => console.log(`WhatsApp webhook job ${job.id} completed`));
+webhookWorker.on("failed", (job, error) => console.error(`WhatsApp webhook job ${job?.id ?? "unknown"} failed: ${error.message}`));
+campaignWorker.on("failed", (job, error) => { console.error(`Campaign job ${job?.id ?? "unknown"} failed: ${error.message}`); if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) void markCampaignRecipientFailed(job.data.recipientId, error); });
+const shutdown = async () => { await Promise.all([webhookWorker.close(), campaignWorker.close()]); await prisma.$disconnect(); process.exit(0); };
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);
-
