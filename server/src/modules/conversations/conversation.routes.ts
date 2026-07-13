@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { asyncHandler } from "../../lib/async-handler.js";
 import { AppError } from "../../lib/errors.js";
+import { routeParam } from "../../lib/route-param.js";
 import { ok } from "../../lib/response.js";
 import { authenticate, requireRole } from "../../middleware/auth.js";
 import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
@@ -38,7 +39,7 @@ conversationRouter.post("/", requireRole("OWNER", "ADMIN", "SALES_AGENT"), async
 }));
 
 conversationRouter.get("/:id", asyncHandler(async (req, res) => {
-  const conversation = await assertConversationAccess(authOf(req), req.params.id!);
+  const conversation = await assertConversationAccess(authOf(req), routeParam(req.params.id));
   const [messages, notes] = await prisma.$transaction([
     prisma.message.findMany({ where: { businessId: req.auth!.businessId, conversationId: conversation.id }, include: { attachments: true, senderUser: { select: { id: true, firstName: true, lastName: true } }, replyTo: { select: { id: true, body: true } } }, orderBy: { createdAt: "asc" }, take: 200 }),
     prisma.internalNote.findMany({ where: { businessId: req.auth!.businessId, conversationId: conversation.id, deletedAt: null }, include: { author: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" }, take: 100 })
@@ -47,7 +48,7 @@ conversationRouter.get("/:id", asyncHandler(async (req, res) => {
 }));
 
 conversationRouter.post("/:id/read", asyncHandler(async (req, res) => {
-  const conversation = await assertConversationAccess(authOf(req), req.params.id!);
+  const conversation = await assertConversationAccess(authOf(req), routeParam(req.params.id));
   await prisma.conversation.update({ where: { id: conversation.id, businessId: req.auth!.businessId }, data: { unreadCount: 0 } });
   emitToBusiness(req.auth!.businessId, "conversation:updated", { conversationId: conversation.id, unreadCount: 0 });
   return ok(res, null, "Conversation marked as read");
@@ -55,7 +56,7 @@ conversationRouter.post("/:id/read", asyncHandler(async (req, res) => {
 
 conversationRouter.post("/:id/messages", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
   const input = z.object({ body: z.string().trim().min(1).max(4096), type: z.enum(["TEXT"]).default("TEXT"), replyToId: z.string().uuid().optional(), idempotencyKey: z.string().min(8).max(100).optional() }).parse(req.body);
-  const auth = authOf(req); const conversation = await assertConversationAccess(auth, req.params.id!);
+  const auth = authOf(req); const conversation = await assertConversationAccess(auth, routeParam(req.params.id));
   const cloud = conversation.channel === "WHATSAPP" ? await getCloudProvider(auth.businessId) : undefined;
   if(conversation.channel === "MOCK_WHATSAPP")requireMockProvider();
   if(conversation.channel === "WHATSAPP" && !conversation.customer.normalizedPhone) throw new AppError(400,"CUSTOMER_PHONE_REQUIRED","Customer needs a valid phone number before messaging");
@@ -87,7 +88,7 @@ conversationRouter.post("/:id/messages", requireRole("OWNER", "ADMIN", "SALES_AG
 
 conversationRouter.post("/:id/internal-notes", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
   const { body } = z.object({ body: z.string().trim().min(1).max(5000) }).parse(req.body); const auth = authOf(req);
-  const conversation = await assertConversationAccess(auth, req.params.id!);
+  const conversation = await assertConversationAccess(auth, routeParam(req.params.id));
   const note = await prisma.internalNote.create({ data: { businessId: auth.businessId, conversationId: conversation.id, authorId: auth.userId, body }, include: { author: { select: { id: true, firstName: true, lastName: true } } } });
   emitToConversation(conversation.id, "internal-note:created", note);
   return ok(res, note, "Internal note added", 201);
@@ -95,7 +96,7 @@ conversationRouter.post("/:id/internal-notes", requireRole("OWNER", "ADMIN", "SA
 
 conversationRouter.patch("/:id/assignment", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
   const { assignedUserId } = z.object({ assignedUserId: z.string().uuid().nullable() }).parse(req.body); const auth = authOf(req);
-  const conversation = await assertConversationAccess(auth, req.params.id!, false);
+  const conversation = await assertConversationAccess(auth, routeParam(req.params.id), false);
   if (assignedUserId) {
     const member = await prisma.businessMember.findFirst({ where: { businessId: auth.businessId, userId: assignedUserId, status: "ACTIVE" } });
     if (!member) throw new AppError(400, "INVALID_ASSIGNEE", "Assignee is not an active workspace member");
@@ -112,7 +113,7 @@ conversationRouter.patch("/:id/assignment", requireRole("OWNER", "ADMIN"), async
 
 conversationRouter.patch("/:id/status", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
   const { status } = z.object({ status: z.enum(["OPEN", "PENDING", "RESOLVED", "ARCHIVED"]) }).parse(req.body); const auth = authOf(req);
-  const conversation = await assertConversationAccess(auth, req.params.id!);
+  const conversation = await assertConversationAccess(auth, routeParam(req.params.id));
   const updated = await prisma.conversation.update({ where: { id: conversation.id, businessId: auth.businessId }, data: { status, archivedAt: status === "ARCHIVED" ? new Date() : null }, include: conversationSummaryInclude });
   emitToBusiness(auth.businessId, "conversation:updated", updated); emitToConversation(conversation.id, "conversation:status", updated);
   return ok(res, updated, "Conversation status updated");

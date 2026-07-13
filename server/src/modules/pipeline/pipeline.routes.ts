@@ -5,6 +5,7 @@ import { asyncHandler } from "../../lib/async-handler.js";
 import { ok } from "../../lib/response.js";
 import { AppError } from "../../lib/errors.js";
 import { authenticate, requireRole } from "../../middleware/auth.js";
+import { routeParam } from "../../lib/route-param.js";
 
 export const pipelineRouter = Router();
 pipelineRouter.use(authenticate);
@@ -14,7 +15,7 @@ pipelineRouter.get("/", asyncHandler(async (req, res) => {
 }));
 pipelineRouter.patch("/leads/:leadId/stage", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
   const { stageId } = z.object({ stageId: z.string().uuid() }).parse(req.body);
-  const lead = await prisma.lead.findFirst({ where: { id: req.params.leadId, businessId: req.auth!.businessId, deletedAt: null, ...(req.auth!.role === "SALES_AGENT" ? { assignedUserId: req.auth!.userId } : {}) } });
+  const lead = await prisma.lead.findFirst({ where: { id: routeParam(req.params.leadId,"leadId"), businessId: req.auth!.businessId, deletedAt: null, ...(req.auth!.role === "SALES_AGENT" ? { assignedUserId: req.auth!.userId } : {}) } });
   if (!lead) throw new AppError(404, "LEAD_NOT_FOUND", "Lead was not found");
   const stage = await prisma.pipelineStage.findFirst({ where: { id: stageId, businessId: req.auth!.businessId, pipelineId: lead.pipelineId } });
   if (!stage) throw new AppError(400, "INVALID_STAGE", "Stage does not belong to this pipeline");
@@ -25,4 +26,3 @@ pipelineRouter.patch("/leads/:leadId/stage", requireRole("OWNER", "ADMIN", "SALE
   });
   return ok(res, updated, "Lead stage updated");
 }));
-

@@ -5,6 +5,7 @@ import { asyncHandler } from "../../lib/async-handler.js";
 import { ok } from "../../lib/response.js";
 import { authenticate, requireRole } from "../../middleware/auth.js";
 import { assertCustomerOwnership, customerInclude, normalizeEmail, normalizePhone } from "./customer.service.js";
+import { routeParam } from "../../lib/route-param.js";
 
 export const customerRouter = Router();
 customerRouter.use(authenticate);
@@ -47,27 +48,27 @@ customerRouter.post("/", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHand
 }));
 
 customerRouter.get("/:id", asyncHandler(async (req, res) => {
-  await assertCustomerOwnership(req.auth!.businessId, req.params.id!);
-  const customer = await prisma.customer.findFirstOrThrow({ where: { id: req.params.id, businessId: req.auth!.businessId }, include: { ...customerInclude, notes: { where: { deletedAt: null }, include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "desc" } }, activities: { orderBy: { createdAt: "desc" }, take: 100 } } });
+  const customerId=routeParam(req.params.id);await assertCustomerOwnership(req.auth!.businessId, customerId);
+  const customer = await prisma.customer.findFirstOrThrow({ where: { id: customerId, businessId: req.auth!.businessId }, include: { ...customerInclude, notes: { where: { deletedAt: null }, include: { author: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "desc" } }, activities: { orderBy: { createdAt: "desc" }, take: 100 } } });
   return ok(res, customer);
 }));
 
 customerRouter.patch("/:id", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
-  const existing = await assertCustomerOwnership(req.auth!.businessId, req.params.id!);
+  const existing = await assertCustomerOwnership(req.auth!.businessId, routeParam(req.params.id));
   const input = editable.partial().omit({ tagIds: true }).parse(req.body);
   const customer = await prisma.customer.update({ where: { id: existing.id }, data: { ...input, ...(input.phone !== undefined ? { normalizedPhone: normalizePhone(input.phone) } : {}), ...(input.email !== undefined ? { normalizedEmail: normalizeEmail(input.email) } : {}) }, include: customerInclude });
   return ok(res, customer, "Customer updated");
 }));
 
 customerRouter.delete("/:id", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
-  const customer = await assertCustomerOwnership(req.auth!.businessId, req.params.id!);
+  const customer = await assertCustomerOwnership(req.auth!.businessId, routeParam(req.params.id));
   await prisma.customer.update({ where: { id: customer.id }, data: { deletedAt: new Date() } });
   await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "CUSTOMER_DELETED", entityType: "Customer", entityId: customer.id } });
   return ok(res, null, "Customer deleted");
 }));
 
 customerRouter.post("/:id/notes", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
-  const customer = await assertCustomerOwnership(req.auth!.businessId, req.params.id!);
+  const customer = await assertCustomerOwnership(req.auth!.businessId, routeParam(req.params.id));
   const { content } = z.object({ content: z.string().trim().min(1).max(5000) }).parse(req.body);
   const note = await prisma.$transaction(async (tx) => {
     const created = await tx.customerNote.create({ data: { businessId: req.auth!.businessId, customerId: customer.id, authorId: req.auth!.userId, content } });
@@ -76,4 +77,3 @@ customerRouter.post("/:id/notes", requireRole("OWNER", "ADMIN", "SALES_AGENT"), 
   });
   return ok(res, note, "Note added", 201);
 }));
-

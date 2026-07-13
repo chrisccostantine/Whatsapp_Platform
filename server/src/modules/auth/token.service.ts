@@ -25,7 +25,7 @@ export async function verifyAccessToken(token: string): Promise<AccessClaims> {
   }
 }
 
-export async function issueTokenPair(claims: AccessClaims, context: { userAgent?: string; ipAddress?: string }, familyId = randomUUID()) {
+export async function issueTokenPair(claims: AccessClaims, context: { userAgent?: string; ipAddress?: string }, familyId: string = randomUUID()) {
   const refreshToken = randomBytes(48).toString("base64url");
   const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_EXPIRES_IN_DAYS * 86_400_000);
   await prisma.refreshToken.create({ data: {

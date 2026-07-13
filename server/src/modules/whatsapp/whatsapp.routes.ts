@@ -14,11 +14,20 @@ import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
 import { assertConversationAccess } from "../conversations/conversation.service.js";
 import { getCloudProvider } from "./account.service.js";
 import { WhatsAppCloudProvider } from "./cloud.provider.js";
+import { routeParam } from "../../lib/route-param.js";
 
 export const whatsAppRouter = Router();
 const safeAccount = { id: true, whatsAppBusinessAccountId: true, phoneNumberId: true, displayPhoneNumber: true, verifiedName: true, metaAppId: true, connectionStatus: true, lastSyncAt: true, lastError: true, createdAt: true, updatedAt: true } as const;
 const tokenMatches = (left: string, right: string) => { const a=Buffer.from(left);const b=Buffer.from(right);return a.length===b.length&&timingSafeEqual(a,b); };
 const templateStatus=(status:string)=>status==="APPROVED"||status==="REJECTED"||status==="PAUSED"||status==="DISABLED"?status:status==="PENDING"||status==="IN_APPEAL"?"PENDING" as const:"DISABLED" as const;
+const webhookEnvelopeSchema=z.object({
+  object:z.literal("whatsapp_business_account"),
+  entry:z.array(z.object({
+    changes:z.array(z.object({
+      value:z.object({metadata:z.object({phone_number_id:z.string()})}).passthrough()
+    }))
+  }).passthrough())
+}).passthrough();
 
 whatsAppRouter.get("/webhook", asyncHandler(async (req, res) => {
   const query = z.object({ "hub.mode": z.literal("subscribe"), "hub.verify_token": z.string(), "hub.challenge": z.string() }).safeParse(req.query);
@@ -31,7 +40,7 @@ whatsAppRouter.get("/webhook", asyncHandler(async (req, res) => {
 
 whatsAppRouter.post("/webhook", asyncHandler(async (req, res) => {
   if (!req.rawBody || !verifyMetaSignature(req.rawBody, req.header("x-hub-signature-256"))) throw new AppError(401, "INVALID_WEBHOOK_SIGNATURE", "Webhook signature is invalid");
-  const envelope = z.object({ object: z.literal("whatsapp_business_account"), entry: z.array(z.object({ changes: z.array(z.object({ value: z.object({ metadata: z.object({ phone_number_id: z.string() }) }).passthrough() })) })).passthrough() }).passthrough().parse(req.body);
+  const envelope = webhookEnvelopeSchema.parse(req.body);
   const phoneNumberId = envelope.entry[0]?.changes[0]?.value.metadata.phone_number_id;
   const account = phoneNumberId ? await prisma.whatsAppAccount.findFirst({ where: { phoneNumberId, connectionStatus: "CONNECTED" } }) : null;
   if (!account) { res.status(200).json({ success: true }); return; }
@@ -79,7 +88,7 @@ whatsAppRouter.post("/templates/sync", requireRole("OWNER", "ADMIN"), asyncHandl
 
 whatsAppRouter.post("/templates/:templateId/send", requireRole("OWNER", "ADMIN", "SALES_AGENT"), asyncHandler(async (req, res) => {
   const input = z.object({ conversationId: z.string().uuid(), variables: z.array(z.string().max(1024)).max(20).default([]), idempotencyKey: z.string().min(8).max(100).optional() }).parse(req.body); const auth=req.auth!;
-  const conversation = await assertConversationAccess(auth, input.conversationId); const template = await prisma.whatsAppTemplate.findFirst({ where: { id: req.params.templateId!, businessId: auth.businessId, status: "APPROVED" } });
+  const conversation = await assertConversationAccess(auth, input.conversationId); const template = await prisma.whatsAppTemplate.findFirst({ where: { id: routeParam(req.params.templateId,"templateId"), businessId: auth.businessId, status: "APPROVED" } });
   if (!template) throw new AppError(404, "APPROVED_TEMPLATE_NOT_FOUND", "Approved template was not found");
   const expected = Array.isArray(template.variables) ? template.variables.length : 0; if (input.variables.length !== expected) throw new AppError(400, "TEMPLATE_VARIABLE_MISMATCH", `This template requires ${expected} variables`);
   const { account, provider } = await getCloudProvider(auth.businessId); if (!provider.sendTemplate) throw new AppError(500, "PROVIDER_ERROR", "Provider does not support templates");
@@ -90,6 +99,6 @@ whatsAppRouter.post("/templates/:templateId/send", requireRole("OWNER", "ADMIN",
 }));
 
 whatsAppRouter.get("/media/:attachmentId", asyncHandler(async (req, res) => {
-  const attachment=await prisma.messageAttachment.findFirst({where:{id:req.params.attachmentId,businessId:req.auth!.businessId},include:{message:{include:{conversation:true}}}});if(!attachment?.providerMediaId)throw new AppError(404,"MEDIA_NOT_FOUND","Media was not found");
+  const attachment=await prisma.messageAttachment.findFirst({where:{id:routeParam(req.params.attachmentId,"attachmentId"),businessId:req.auth!.businessId},include:{message:{include:{conversation:true}}}});if(!attachment?.providerMediaId)throw new AppError(404,"MEDIA_NOT_FOUND","Media was not found");
   await assertConversationAccess(req.auth!,attachment.message.conversationId);const{provider}=await getCloudProvider(req.auth!.businessId);const info=await provider.getMedia(attachment.providerMediaId);if((info.file_size??0)>20*1024*1024)throw new AppError(413,"MEDIA_TOO_LARGE","Media exceeds the 20 MB download limit");const download=await provider.downloadMedia(info.url);res.setHeader("Content-Type",download.mimeType);res.setHeader("Content-Disposition",`inline; filename="${attachment.fileName.replace(/["\r\n]/g,"")}"`);res.send(download.bytes);
 }));
