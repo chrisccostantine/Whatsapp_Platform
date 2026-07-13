@@ -8,6 +8,7 @@ const phoneResponse = z.object({ id: z.string(), display_phone_number: z.string(
 const templateResponse = z.object({ data: z.array(z.object({ id: z.string().optional(), name: z.string(), language: z.string(), category: z.enum(["MARKETING","UTILITY","AUTHENTICATION"]), status: z.string(), components: z.array(z.object({ type: z.string(), text: z.string().optional(), buttons: z.array(z.unknown()).optional(), example: z.unknown().optional() })).default([]) })), paging: z.object({ cursors: z.object({ after: z.string().optional() }).optional() }).optional() });
 const templateCreateResponse = z.object({ id: z.string(), status: z.string(), category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]) });
 const graphErrorResponse = z.object({ error: z.object({ message: z.string().optional(), code: z.number().optional(), error_subcode: z.number().optional() }) });
+const successResponse = z.object({ success: z.union([z.boolean(), z.literal("true")]) });
 export type CreateTemplateInput = { name: string; language: string; category: "MARKETING" | "UTILITY"; header?: { text: string; example?: string }; body: string; bodyExamples: string[]; footer?: string; buttons: { type: "QUICK_REPLY"; text: string }[] };
 
 export class WhatsAppCloudProvider implements MessagingProvider {
@@ -44,6 +45,7 @@ export class WhatsAppCloudProvider implements MessagingProvider {
     if (input.buttons.length) components.push({ type: "BUTTONS", buttons: input.buttons });
     return templateCreateResponse.parse(await this.graph(`${wabaId}/message_templates`, { method: "POST", body: JSON.stringify({ name: input.name, language: input.language, category: input.category, components }) }));
   }
+  async subscribeWaba(wabaId: string) { const result = successResponse.parse(await this.graph(`${wabaId}/subscribed_apps`, { method: "POST", body: JSON.stringify({}) })); return result.success === true || result.success === "true"; }
   async getMedia(mediaId: string) { return z.object({ url: z.string().url(), mime_type: z.string(), sha256: z.string().optional(), file_size: z.coerce.number().optional() }).parse(await this.graph(mediaId)); }
   async downloadMedia(url: string) {
     if (!url.startsWith("https://lookaside.fbsbx.com/") && !url.startsWith("https://graph.facebook.com/")) throw new AppError(400, "INVALID_MEDIA_URL", "Meta returned an invalid media URL");

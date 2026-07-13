@@ -36,7 +36,7 @@ Credential fields use AES-256-GCM authenticated encryption. Decryption occurs on
 
 Webhook POST requests require Meta's `X-Hub-Signature-256`. The raw body is verified before parsing. A SHA-256 event key and database unique constraint prevent duplicate processing. The API returns HTTP 200 after persistence, while BullMQ workers process messages and statuses with exponential retries. Incoming messages reopen the 24-hour session window and automatically match or create E.164 customers.
 
-Template creation submits validated Marketing or Utility text components to the connected WABA through the versioned Graph API. Placeholder numbering and approval examples are validated server-side, the returned Meta ID and pending status are stored tenant-side, and only owners/admins may submit. Synchronization remains the source of truth for later approval, rejection, pause, or disable status changes.
+Template creation submits validated Marketing or Utility text components to the connected WABA through the versioned Graph API. Placeholder numbering and approval examples are validated server-side, the returned Meta ID and pending status are stored tenant-side, and only owners/admins may submit. Synchronization remains the source of truth for later approval, rejection, pause, or disable status changes. Connecting credentials also subscribes the Meta app to the tenant's WABA so the configured webhook receives message and status events.
 
 ## Campaign and consent safety
 

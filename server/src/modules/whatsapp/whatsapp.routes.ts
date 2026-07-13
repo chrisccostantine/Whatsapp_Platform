@@ -55,11 +55,11 @@ whatsAppRouter.get("/account", asyncHandler(async (req, res) => ok(res, await pr
 
 whatsAppRouter.post("/account/connect", requireRole("OWNER"), asyncHandler(async (req, res) => {
   const input = z.object({ whatsAppBusinessAccountId: z.string().min(5).max(100), phoneNumberId: z.string().min(5).max(100), accessToken: z.string().min(20).max(1000), verifyToken: z.string().min(16).max(200), metaAppId: z.string().max(100).optional() }).parse(req.body);
-  const provider = new WhatsAppCloudProvider(input.phoneNumberId, input.accessToken); const profile = await provider.testConnection();
+  const provider = new WhatsAppCloudProvider(input.phoneNumberId, input.accessToken); const profile = await provider.testConnection(); await provider.subscribeWaba(input.whatsAppBusinessAccountId);
   const optionalProfile={...(profile.verified_name?{verifiedName:profile.verified_name}:{}),...((input.metaAppId??env.META_APP_ID)?{metaAppId:input.metaAppId??env.META_APP_ID}:{})};
   const account = await prisma.whatsAppAccount.upsert({ where: { businessId: req.auth!.businessId }, update: { whatsAppBusinessAccountId: input.whatsAppBusinessAccountId, phoneNumberId: input.phoneNumberId, displayPhoneNumber: profile.display_phone_number, encryptedAccessToken: encryptSecret(input.accessToken), encryptedVerifyToken: encryptSecret(input.verifyToken), connectionStatus: "CONNECTED", lastError: null, disconnectedAt: null,...optionalProfile }, create: { businessId: req.auth!.businessId, whatsAppBusinessAccountId: input.whatsAppBusinessAccountId, phoneNumberId: input.phoneNumberId, displayPhoneNumber: profile.display_phone_number, encryptedAccessToken: encryptSecret(input.accessToken), encryptedVerifyToken: encryptSecret(input.verifyToken), connectionStatus: "CONNECTED",...optionalProfile }, select: safeAccount });
   await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_CONNECTED", entityType: "WhatsAppAccount", entityId: account.id } });
-  return ok(res, account, "WhatsApp account connected", 201);
+  return ok(res, account, "WhatsApp account connected and subscribed to webhooks", 201);
 }));
 
 whatsAppRouter.post("/account/test", requireRole("OWNER", "ADMIN"), asyncHandler(async (req, res) => {
