@@ -2,11 +2,11 @@
 
 ## Services
 
-Create one Railway project with PostgreSQL, Redis, API, and Web services connected to this repository.
+Create one Railway project with PostgreSQL, Redis, API, Web, and Worker services connected to this repository. Keep the Root Directory set to `/` for all three application services because this is a shared npm-workspaces monorepo.
 
 ### API
 
-Set the root directory to the repository root and Dockerfile path to `server/Dockerfile`. Add:
+Connect the GitHub repository and set the Config File Path to `/railway.api.json`. Add:
 
 ```env
 NODE_ENV=production
@@ -28,17 +28,17 @@ The container applies checked-in Prisma migrations before starting. The Railway 
 
 ### Web
 
-Create a second service with `client/Dockerfile`. Set build argument `VITE_API_URL=https://<api-domain>/api/v1`. Its health path is `/health`.
+Connect the same GitHub repository to a second service and set its Config File Path to `/railway.web.json`. Set `VITE_API_URL=https://<api-domain>/api/v1` and `PORT=80`. The config uses `client/Dockerfile` and health path `/health`.
 
 ### WhatsApp worker
 
-Create a third service from `server/Dockerfile` with the same API environment variables and override its start command:
+Connect the same GitHub repository to a third service and set its Config File Path to `/railway.worker.json`. Give it the same backend variables as the API. It starts with:
 
 ```sh
-npm run db:migrate --workspace @scalora/server && npm run start:worker --workspace @scalora/server
+npm run start:worker --workspace @scalora/server
 ```
 
-The worker must share the API's PostgreSQL and Redis services. Do not expose a public domain for it. Configure Meta's webhook callback as `https://<api-domain>/api/v1/whatsapp/webhook` and subscribe to the `messages` field.
+The API config runs checked-in migrations as a pre-deploy command. The worker must share the API's PostgreSQL and Redis services and should be deployed after the API migration succeeds. Do not expose a public domain for it. Configure Meta's webhook callback as `https://<api-domain>/api/v1/whatsapp/webhook` and subscribe to the `messages` field.
 
 After the first API deployment, run the seed command only if you want demo data:
 
