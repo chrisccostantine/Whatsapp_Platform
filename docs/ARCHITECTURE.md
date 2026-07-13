@@ -14,7 +14,13 @@ Access tokens are short-lived. Opaque refresh tokens live in HttpOnly cookies; o
 
 ## Modules
 
-Backend modules own their routes, validation, services, and future repositories. The Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Later phases add inbox/providers, WhatsApp Cloud API, campaigns/queues, commerce/PDFs, and reporting/subscriptions.
+Backend modules own their routes, validation, services, and future repositories. Phase 1 modules are auth, business onboarding, customers, tags/notes, follow-ups, pipeline, and dashboard. Phase 2 adds conversations, public messages, internal notes, assignment history, messaging providers, and real-time delivery. Later phases add WhatsApp Cloud API, campaigns/queues, commerce/PDFs, and reporting/subscriptions.
+
+## Real-time inbox
+
+Socket.IO authenticates with the same short-lived access token and reloads the active membership before joining `business:{businessId}`. Conversation rooms are joined only after a tenant-scoped database lookup; sales agents must also be assigned. REST remains the source of truth and Socket.IO events invalidate client caches.
+
+Public messages and internal notes use separate tables and endpoints. This prevents an employee-only note from ever entering a provider send path. Outgoing messages use tenant-scoped idempotency keys. The mock provider implements the same interface that the official Cloud API provider will implement in Phase 3.
 
 ## Railway topology
 
@@ -25,4 +31,3 @@ Backend modules own their routes, validation, services, and future repositories.
 - Persistent files: production storage uses an S3-compatible provider; local disk is development-only.
 
 Railway terminates TLS and provides `PORT`. The API listens on `0.0.0.0`, trusts one proxy hop, has health checks, and returns no production stack traces.
-

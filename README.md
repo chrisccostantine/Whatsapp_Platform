@@ -1,6 +1,6 @@
 # Scalora CRM
 
-Scalora CRM is a responsive, multi-tenant SaaS foundation for Lebanese businesses that sell and support customers through WhatsApp. This repository is being delivered in six quality-gated phases. Phase 1 establishes authentication, strict tenant isolation, roles, onboarding, customers, tags/notes, follow-ups, pipeline, dashboard, and demo data.
+Scalora CRM is a responsive, multi-tenant SaaS foundation for Lebanese businesses that sell and support customers through WhatsApp. This repository is being delivered in six quality-gated phases. Phase 1 establishes the CRM foundation; Phase 2 adds the real-time shared inbox and local WhatsApp simulation.
 
 ## Repository
 
@@ -66,11 +66,15 @@ See [architecture](docs/ARCHITECTURE.md), [Railway deployment](docs/RAILWAY.md),
 
 ## Delivery phases
 
-- Phase 1: foundation and CRM (current)
-- Phase 2: shared inbox, conversations, Socket.IO, mock WhatsApp provider
+- Phase 1: foundation and CRM
+- Phase 2: shared inbox, conversations, Socket.IO, mock WhatsApp provider (implemented)
 - Phase 3: official WhatsApp Cloud API, webhooks, templates, media
 - Phase 4: consent-safe campaigns and BullMQ processing
 - Phase 5: products, orders, quotations, invoices, payments, PDFs
 - Phase 6: full reports, notifications, plan enforcement, audit coverage, final deployment hardening
 
 No unofficial WhatsApp Web automation will be used. Production messaging will use Meta's official Cloud API behind a provider abstraction.
+
+## Local mock WhatsApp
+
+The inbox uses `MOCK_WHATSAPP` until Phase 3 credentials are connected. In development, owners/admins can simulate an inbound message through `POST /api/v1/conversations/mock/incoming` with a tenant-owned `customerId` and `body`. Outgoing mock messages automatically transition from sent to delivered to read and emit Socket.IO events. The simulator is unavailable when `NODE_ENV=production`.

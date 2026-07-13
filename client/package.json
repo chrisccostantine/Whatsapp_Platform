@@ -15,6 +15,7 @@
     "react-hook-form": "^7.56.4",
     "react-router": "^7.6.1",
     "recharts": "^2.15.3",
+    "socket.io-client": "^4.8.1",
     "zod": "^3.25.28"
   },
   "devDependencies": {
@@ -29,4 +30,3 @@
     "vitest": "^3.1.4"
   }
 }
-

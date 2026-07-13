@@ -15,9 +15,14 @@ enum CustomerSource { WHATSAPP INSTAGRAM FACEBOOK WEBSITE PHONE WALK_IN REFERRAL
 enum LifecycleStage { NEW_LEAD CONTACTED QUALIFIED PROPOSAL_SENT NEGOTIATION WON LOST EXISTING_CUSTOMER }
 enum FollowUpPriority { LOW MEDIUM HIGH URGENT }
 enum FollowUpStatus { PENDING IN_PROGRESS COMPLETED CANCELLED OVERDUE }
-enum ActivityType { CUSTOMER_CREATED NOTE_ADDED TAG_ADDED TAG_REMOVED LEAD_STAGE_CHANGED FOLLOW_UP_CREATED FOLLOW_UP_COMPLETED }
+enum ActivityType { CUSTOMER_CREATED NOTE_ADDED TAG_ADDED TAG_REMOVED LEAD_STAGE_CHANGED FOLLOW_UP_CREATED FOLLOW_UP_COMPLETED CONVERSATION_ASSIGNED MESSAGE_SENT MESSAGE_RECEIVED }
 enum SubscriptionPlan { STARTER GROWTH PRO }
 enum SubscriptionStatus { TRIALING ACTIVE PAST_DUE CANCELLED EXPIRED }
+enum ConversationStatus { OPEN PENDING RESOLVED ARCHIVED }
+enum ConversationChannel { WHATSAPP MOCK_WHATSAPP }
+enum MessageDirection { INBOUND OUTBOUND }
+enum MessageType { TEXT IMAGE DOCUMENT AUDIO }
+enum MessageStatus { QUEUED SENT DELIVERED READ FAILED RECEIVED }
 
 model User {
   id                 String          @id @default(uuid()) @db.Uuid
@@ -37,6 +42,11 @@ model User {
   assignedLeads      Lead[]          @relation("LeadAssignee")
   activities         Activity[]
   auditLogs          AuditLog[]
+  assignedConversations Conversation[] @relation("ConversationAssignee")
+  conversationAssignments ConversationAssignment[] @relation("AssignedMember")
+  madeAssignments    ConversationAssignment[] @relation("AssignmentActor")
+  sentMessages       Message[]         @relation("MessageSender")
+  internalNotes      InternalNote[]
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   deletedAt          DateTime?
@@ -68,6 +78,11 @@ model Business {
   subscription       Subscription?
   usageRecords       UsageRecord[]
   auditLogs          AuditLog[]
+  conversations      Conversation[]
+  conversationAssignments ConversationAssignment[]
+  messages           Message[]
+  messageAttachments MessageAttachment[]
+  internalNotes      InternalNote[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -159,6 +174,7 @@ model Customer {
   activities         Activity[]
   followUps          FollowUp[]
   leads              Lead[]
+  conversations      Conversation[]
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   deletedAt          DateTime?
@@ -361,4 +377,114 @@ model AuditLog {
 
   @@index([businessId, createdAt])
   @@index([businessId, entityType, entityId])
+}
+
+model Conversation {
+  id                    String              @id @default(uuid()) @db.Uuid
+  businessId            String              @db.Uuid
+  customerId            String              @db.Uuid
+  assignedUserId        String?             @db.Uuid
+  channel               ConversationChannel @default(MOCK_WHATSAPP)
+  status                ConversationStatus  @default(OPEN)
+  unreadCount           Int                 @default(0)
+  lastMessagePreview    String?
+  lastMessageAt         DateTime?
+  lastCustomerMessageAt DateTime?
+  sessionExpiresAt      DateTime?
+  business              Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer              Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedUser          User?               @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignments           ConversationAssignment[]
+  messages              Message[]
+  internalNotes         InternalNote[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  archivedAt            DateTime?
+
+  @@unique([businessId, customerId, channel])
+  @@index([businessId, status, lastMessageAt])
+  @@index([businessId, assignedUserId, status])
+  @@index([businessId, customerId])
+}
+
+model ConversationAssignment {
+  id             String       @id @default(uuid()) @db.Uuid
+  businessId     String       @db.Uuid
+  conversationId String       @db.Uuid
+  assignedUserId String       @db.Uuid
+  assignedById   String       @db.Uuid
+  unassignedAt   DateTime?
+  business       Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  assignedUser   User         @relation("AssignedMember", fields: [assignedUserId], references: [id])
+  assignedBy     User         @relation("AssignmentActor", fields: [assignedById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([businessId, conversationId, createdAt])
+  @@index([businessId, assignedUserId, unassignedAt])
+}
+
+model Message {
+  id                String            @id @default(uuid()) @db.Uuid
+  businessId        String            @db.Uuid
+  conversationId    String            @db.Uuid
+  senderUserId      String?           @db.Uuid
+  replyToId         String?           @db.Uuid
+  providerMessageId String?
+  idempotencyKey    String?
+  direction         MessageDirection
+  type              MessageType       @default(TEXT)
+  status            MessageStatus
+  body              String?
+  errorCode         String?
+  errorMessage      String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  receivedAt        DateTime?
+  business          Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  conversation      Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser        User?             @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  replyTo           Message?          @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies           Message[]         @relation("MessageReplies")
+  attachments       MessageAttachment[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([businessId, providerMessageId])
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, conversationId, createdAt])
+  @@index([businessId, status])
+}
+
+model MessageAttachment {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  messageId  String   @db.Uuid
+  fileName   String
+  mimeType   String
+  size       Int
+  url        String
+  metadata   Json?
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, messageId])
+}
+
+model InternalNote {
+  id             String       @id @default(uuid()) @db.Uuid
+  businessId     String       @db.Uuid
+  conversationId String       @db.Uuid
+  authorId       String       @db.Uuid
+  body           String
+  business       Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         User         @relation(fields: [authorId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  @@index([businessId, conversationId, createdAt])
 }

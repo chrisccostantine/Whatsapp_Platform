@@ -25,3 +25,7 @@ businessRouter.patch("/onboarding", requireRole("OWNER"), asyncHandler(async (re
   return ok(res, business, "Onboarding completed");
 }));
 
+businessRouter.get("/members", asyncHandler(async (req, res) => {
+  const members = await prisma.businessMember.findMany({ where: { businessId: req.auth!.businessId, status: "ACTIVE" }, select: { id: true, role: true, user: { select: { id: true, firstName: true, lastName: true, email: true } } }, orderBy: { createdAt: "asc" } });
+  return ok(res, members);
+}));

@@ -1,6 +1,7 @@
 import axios from "axios";
 export const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:4000/api/v1", withCredentials: true });
 let accessToken: string | null = localStorage.getItem("scalora_access_token");
+export const getAccessToken = () => accessToken;
 export const setAccessToken = (token: string | null) => { accessToken = token; token ? localStorage.setItem("scalora_access_token", token) : localStorage.removeItem("scalora_access_token"); };
 api.interceptors.request.use((config) => { if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`; return config; });
 api.interceptors.response.use(undefined, async (error) => {
@@ -11,4 +12,3 @@ api.interceptors.response.use(undefined, async (error) => {
   }
   return Promise.reject(error);
 });
-

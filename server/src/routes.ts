@@ -6,6 +6,7 @@ import { tagRouter } from "./modules/tags/tag.routes.js";
 import { followUpRouter } from "./modules/follow-ups/follow-up.routes.js";
 import { pipelineRouter } from "./modules/pipeline/pipeline.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
+import { conversationRouter } from "./modules/conversations/conversation.routes.js";
 
 export const apiRouter = Router();
 apiRouter.use("/auth", authRouter);
@@ -15,4 +16,4 @@ apiRouter.use("/tags", tagRouter);
 apiRouter.use("/follow-ups", followUpRouter);
 apiRouter.use("/pipeline", pipelineRouter);
 apiRouter.use("/dashboard", dashboardRouter);
-
+apiRouter.use("/conversations", conversationRouter);
