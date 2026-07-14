@@ -9,7 +9,18 @@ const templateResponse = z.object({ data: z.array(z.object({ id: z.string().opti
 const templateCreateResponse = z.object({ id: z.string(), status: z.string(), category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]) });
 const graphErrorResponse = z.object({ error: z.object({ message: z.string().optional(), code: z.number().optional(), error_subcode: z.number().optional() }) });
 const successResponse = z.object({ success: z.union([z.boolean(), z.literal("true")]) });
+const oauthResponse = z.object({ access_token: z.string().min(20), token_type: z.string().optional(), expires_in: z.number().optional() });
+const wabaPhoneNumbersResponse = z.object({ data: z.array(z.object({ id: z.string() })) });
 export type CreateTemplateInput = { name: string; language: string; category: "MARKETING" | "UTILITY"; header?: { text: string; example?: string }; body: string; bodyExamples: string[]; footer?: string; buttons: { type: "QUICK_REPLY"; text: string }[] };
+
+export async function exchangeEmbeddedSignupCode(code: string) {
+  if (!env.META_APP_ID || !env.META_APP_SECRET) throw new AppError(503, "EMBEDDED_SIGNUP_NOT_CONFIGURED", "WhatsApp one-click connection is not configured");
+  const query = new URLSearchParams({ client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, code });
+  const response = await fetch(`https://graph.facebook.com/${env.WHATSAPP_API_VERSION}/oauth/access_token?${query}`, { signal: AbortSignal.timeout(15_000) });
+  const payload: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) throw new AppError(502, "META_LOGIN_FAILED", "Meta could not authorize this WhatsApp account");
+  return oauthResponse.parse(payload).access_token;
+}
 
 export class WhatsAppCloudProvider implements MessagingProvider {
   readonly channel = "WHATSAPP" as const;
@@ -32,6 +43,7 @@ export class WhatsAppCloudProvider implements MessagingProvider {
     return { providerMessageId: payload.messages[0]!.id, acceptedAt: new Date() };
   }
   async testConnection() { return phoneResponse.parse(await this.graph(`${this.phoneNumberId}?fields=id,display_phone_number,verified_name`)); }
+  async verifyPhoneBelongsToWaba(wabaId: string) { const phones = wabaPhoneNumbersResponse.parse(await this.graph(`${wabaId}/phone_numbers?fields=id&limit=100`)); return phones.data.some((phone) => phone.id === this.phoneNumberId); }
   async fetchTemplates(wabaId: string) {
     const all: z.infer<typeof templateResponse>["data"] = []; let after: string | undefined;
     for (let page=0; page<10; page++) { const query = new URLSearchParams({ limit: "100", fields: "id,name,language,category,status,components" }); if (after) query.set("after", after); const result = templateResponse.parse(await this.graph(`${wabaId}/message_templates?${query}`)); all.push(...result.data); after = result.paging?.cursors?.after; if (!after) break; }

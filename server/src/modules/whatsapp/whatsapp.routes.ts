@@ -13,7 +13,7 @@ import { enqueueWhatsAppWebhook } from "../../queues/whatsapp.queue.js";
 import { emitToBusiness, emitToConversation } from "../../realtime/socket.js";
 import { assertConversationAccess } from "../conversations/conversation.service.js";
 import { getCloudProvider } from "./account.service.js";
-import { WhatsAppCloudProvider } from "./cloud.provider.js";
+import { exchangeEmbeddedSignupCode, WhatsAppCloudProvider } from "./cloud.provider.js";
 import { routeParam } from "../../lib/route-param.js";
 
 export const whatsAppRouter = Router();
@@ -52,6 +52,25 @@ whatsAppRouter.post("/webhook", asyncHandler(async (req, res) => {
 
 whatsAppRouter.use(authenticate);
 whatsAppRouter.get("/account", asyncHandler(async (req, res) => ok(res, await prisma.whatsAppAccount.findUnique({ where: { businessId: req.auth!.businessId }, select: safeAccount }))));
+
+whatsAppRouter.get("/embedded-signup/config", requireRole("OWNER"), asyncHandler(async (_req, res) => {
+  const enabled = Boolean(env.META_APP_ID && env.META_APP_SECRET && env.META_EMBEDDED_SIGNUP_CONFIG_ID && env.META_WEBHOOK_VERIFY_TOKEN);
+  return ok(res, { enabled, ...(enabled ? { appId: env.META_APP_ID, configId: env.META_EMBEDDED_SIGNUP_CONFIG_ID, graphVersion: env.WHATSAPP_API_VERSION } : {}) });
+}));
+
+whatsAppRouter.post("/account/embedded-signup", requireRole("OWNER"), asyncHandler(async (req, res) => {
+  if (!env.META_APP_ID || !env.META_APP_SECRET || !env.META_EMBEDDED_SIGNUP_CONFIG_ID || !env.META_WEBHOOK_VERIFY_TOKEN) throw new AppError(503, "EMBEDDED_SIGNUP_NOT_CONFIGURED", "WhatsApp one-click connection is not configured");
+  const input = z.object({ code: z.string().min(10).max(2000), whatsAppBusinessAccountId: z.string().min(5).max(100), phoneNumberId: z.string().min(5).max(100) }).parse(req.body);
+  const accessToken = await exchangeEmbeddedSignupCode(input.code);
+  const provider = new WhatsAppCloudProvider(input.phoneNumberId, accessToken);
+  const [profile, belongsToWaba] = await Promise.all([provider.testConnection(), provider.verifyPhoneBelongsToWaba(input.whatsAppBusinessAccountId)]);
+  if (!belongsToWaba) throw new AppError(400, "INVALID_WHATSAPP_ASSETS", "The selected phone number does not belong to the WhatsApp business account");
+  await provider.subscribeWaba(input.whatsAppBusinessAccountId);
+  const optionalProfile = profile.verified_name ? { verifiedName: profile.verified_name } : {};
+  const account = await prisma.whatsAppAccount.upsert({ where: { businessId: req.auth!.businessId }, update: { whatsAppBusinessAccountId: input.whatsAppBusinessAccountId, phoneNumberId: input.phoneNumberId, displayPhoneNumber: profile.display_phone_number, encryptedAccessToken: encryptSecret(accessToken), encryptedVerifyToken: encryptSecret(env.META_WEBHOOK_VERIFY_TOKEN), metaAppId: env.META_APP_ID, connectionStatus: "CONNECTED", lastError: null, disconnectedAt: null, ...optionalProfile }, create: { businessId: req.auth!.businessId, whatsAppBusinessAccountId: input.whatsAppBusinessAccountId, phoneNumberId: input.phoneNumberId, displayPhoneNumber: profile.display_phone_number, encryptedAccessToken: encryptSecret(accessToken), encryptedVerifyToken: encryptSecret(env.META_WEBHOOK_VERIFY_TOKEN), metaAppId: env.META_APP_ID, connectionStatus: "CONNECTED", ...optionalProfile }, select: safeAccount });
+  await prisma.auditLog.create({ data: { businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "WHATSAPP_EMBEDDED_SIGNUP_CONNECTED", entityType: "WhatsAppAccount", entityId: account.id } });
+  return ok(res, account, "WhatsApp connected successfully", 201);
+}));
 
 whatsAppRouter.post("/account/connect", requireRole("OWNER"), asyncHandler(async (req, res) => {
   const input = z.object({ whatsAppBusinessAccountId: z.string().min(5).max(100), phoneNumberId: z.string().min(5).max(100), accessToken: z.string().min(20).max(1000), verifyToken: z.string().min(16).max(200), metaAppId: z.string().max(100).optional() }).parse(req.body);

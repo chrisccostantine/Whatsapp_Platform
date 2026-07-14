@@ -14,6 +14,7 @@ const schema = z.object({
   ENCRYPTION_KEY: z.string().min(32),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
+  META_EMBEDDED_SIGNUP_CONFIG_ID: z.string().optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v23.0")
 });
