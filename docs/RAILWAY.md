@@ -33,6 +33,12 @@ The container applies checked-in Prisma migrations before starting. The Railway 
 
 Connect the same GitHub repository to a second service and set its Config File Path to `/railway.web.json`. Set `VITE_API_URL=https://<api-domain>/api/v1` and `PORT=80`. The config uses `client/Dockerfile` and health path `/health`.
 
+The Web service also publishes crawler-readable legal pages for Meta App Review:
+
+- Privacy Policy: `https://<web-domain>/privacy/`
+- Terms of Service: `https://<web-domain>/terms/`
+- User Data Deletion: `https://<web-domain>/data-deletion/`
+
 ### WhatsApp worker
 
 Connect the same GitHub repository to a third service and set its Config File Path to `/railway.worker.json`. Give it the same backend variables as the API. It starts with:
